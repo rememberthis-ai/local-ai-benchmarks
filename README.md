@@ -24,6 +24,7 @@ Detects `uname -m` and forwards to the right chain script (Intel → `intel-benc
 | `intel-bench/` | Intel i9-8950HK + AMD Polaris GPU bench (2026-05-13 to 2026-05-15). Scripts + 9-VLM × 30-photo captioning, 7-LLM context sweep, GPU bench via llama.cpp. | Scripts + `*-summary.md`, `extended-summary.md`, `ctxsweep-*-*.md` (PII-clean) |
 | `swiftlm/` | M1 Max 64 GB SwiftLM (mlx-swift-lm) vs ollama A/B harness. | Scripts only (no `dreamer_prompt.txt`) |
 | `captioning-bench/` | VLM captioning harness with photo-fetch helper. | Scripts only; `photos/` and `results/` stay private |
+| `transcription-bench/` | Whisper-via-sona transcription bench. 4-arm matrix (CPU × Metal × n=2 × n=4). Cross-arch (Intel + Apple Silicon). Reports sec-per-audio-sec. | Scripts only; transcript text files (`/tmp/sona_<arm>.txt`) stay local — they contain your voice memo. |
 | `ollama-fork/` | Bench script for tc-mb/ollama Suppport-MiniCPM-o-4.5 fork. | Yes |
 
 ## Open work
