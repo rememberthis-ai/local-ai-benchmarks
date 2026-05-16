@@ -1,0 +1,25 @@
+# bench output that's user-specific or contains PII
+captioning-bench/photos/
+captioning-bench/.venv/
+captioning-bench/.photo-cache/
+captioning-bench/results/
+
+# vendored llama.cpp checkout + build (rebuild on demand)
+intel-bench/llama.cpp/
+intel-bench/llama.cpp-build/
+
+# bench logs that contain real captions / real registry content
+swiftlm/dreamer_prompt.txt
+**/raw-*.log
+**/captioning-*.md
+!**/captioning-summary.md
+
+# python
+__pycache__/
+*.pyc
+.venv/
+
+# editor
+.DS_Store
+.vscode/
+.idea/
