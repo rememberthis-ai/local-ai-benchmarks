@@ -34,6 +34,11 @@ Run order is rough priority — highest-value first. Numbers under "Effort" are 
 - `mlx-community/Gemma-4-26B-A4B-it-4bit`
 - `mlx-community/Qwen3-Coder-30B-A3B-Instruct-MLX-4bit`
 - `mlx-community/Qwen3-Next-80B-A3B-Instruct-4bit` (+`--thinking`)
+- `mlx-community/gemma-4-e2b-it-4bit` (LLM-mode) &mdash; *new*. Same weights we tested on
+  Intel CPU (where `gemma4:e2b` decodes 6 tok/s @ 32 K). Adds the apples-to-apples cross-arch
+  row: Intel vs M1 Max on identical 2.3 B effective-param model. Currently the LLM matrix only
+  has the much-larger Qwen3.6-35B for M1 Max past 32 K, so cross-hardware decode comparisons
+  in that row are not directly meaningful.
 
 **Method**: `swiftlm/sweep_llm_rebench.sh` already exists and is set up for this. Resume where it paused.
 
