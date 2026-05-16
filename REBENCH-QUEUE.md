@@ -114,6 +114,40 @@ Run order is rough priority — highest-value first. Numbers under "Effort" are 
 
 **Blocked content**: The My Transcriber blog post equivalent of this Remember This post.
 
+## 7. Apple Silicon transcription bench — match the Intel-Mac result
+
+**Why**: The "Local AI on Mac (May 2026)" Remember This blog post claims an Audio
+Transcription tier matrix, but only the Intel-Mac side has actual numbers (from
+`docs/technical/INTEL-METAL-BENCH.md`, 2026-04-25 clean system). Apple Silicon row
+currently says "M1 Max not yet benched" — which is honest but the gap is awkward
+given we have a hard Intel data point with surprising results (CPU+n=2 beats Metal on
+Intel iGPU by ~1.7×).
+
+**What to run**: Mirror the Intel bench's 4-arm design on M1 Max:
+
+| Arm | Backend | Threads | Expected |
+|---|---|---:|---|
+| 1 | Metal (GPU) | 4 | likely winner — UMA flips the Intel result |
+| 2 | Metal (GPU) | 2 | second |
+| 3 | CPU (`--no-gpu`) | 4 | slow path |
+| 4 | CPU (`--no-gpu`) | 2 | slowest |
+
+Use the same 85 s voice memo + `ggml-large-v3-turbo.bin` as the Intel bench so the
+sec-per-audio-sec numbers compare apples-to-apples. Report wall clock, sona %CPU
+peak/avg, and **transcribe-seconds-per-audio-second** (the user-facing metric).
+
+**Method**: Same shape as the Intel bench — spawn `sona serve [--no-gpu] -p 0`, POST
+to `/v1/models/load`, then `/v1/audio/transcriptions` with `language=auto` and
+`n_threads=N`. Sample sona `%cpu` at 1 Hz. Clean system (no MT/RT daemons running,
+no concurrent backfills) — the Intel bench notes the 2.6× contamination penalty
+when a second sona is competing for cores.
+
+**Effort**: ~1 hour once the M1 Max is freed up + on AC + at High Power.
+
+**Blocked claim**: The Audio Transcription row in the blog matrix has Apple Silicon
+listed as "pending". Filling that in lets the Audio Transcription section drop the
+"M1 Max number pending" caveat and present a clean two-row comparison.
+
 ## Bonus: power-mode-aware product settings (Remember This + My Transcriber)
 
 Not a bench, but a product change worth queueing: when on battery + Low Power Mode, background processing (VLM captioning backfill, in particular) is 5–6× slower than on AC + High Power. Possible v0.11+ behavior:
