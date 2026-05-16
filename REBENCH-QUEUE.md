@@ -4,6 +4,18 @@ After the May 2026 "Local AI on Mac" blog post landed, several measurement gaps 
 
 Run order is rough priority — highest-value first. Numbers under "Effort" are rough wall-clock estimates on M1 Max / 64 GB in clean conditions.
 
+**Progress update 2026-05-16 evening session** (4 % battery, ran what would fit):
+- ✅ `Qwen3-8B-4bit` (thinking) — 4K=37, 8K=30, 16K=22 tok/s; 32K errors with RemoteDisconnected (same failure mode as Qwen3-4B; SwiftLM closes the connection past 16K in thinking mode).
+- 🟡 `gpt-oss-20b-MXFP4-Q4` — 4K=26 tok/s only. SwiftLM **segfaulted** at 8K (`Segmentation fault: 11`); 16K-64K all `ConnectionRefused`. Needs an isolated re-bench, not part of the bulk script.
+- 🟡 `Qwen3.6-35B-A3B-4bit` (thinking) — 4K=42, 8K=33, 16K=23, 32K=13 tok/s captured **from the sweep log only**; ctx_sweep.py writes the result file at the very end, so killing mid-sweep (battery hit 4 %) lost the in-flight 48K row and never wrote the .md. 48K/64K still need re-runs.
+- ✅ `gemma-4-e2b-it-4bit` (LLM-mode) — 4K=32, 8K=17, 16K=8, 32K=2.8 tok/s. **Cross-arch finding: Intel CPU `gemma4:e2b` via ollama was 6 tok/s @ 32K — M1 Max SwiftLM is slower at 32K on the same weights.** Decode halves per ctx doubling, then crashes between 16K and 32K (classic small-MoE degradation curve). 64K point in flight at end of session.
+
+**Tooling issues uncovered:**
+
+- `ctx_sweep.py` doesn't write the result md incrementally. If the sweep is interrupted (battery, segfault, kill), all per-ctx-point measurements that already returned are lost from disk — they only exist in the captured stdout log. **Fix:** flush the md after each ctx point lands.
+- `bench-chain-silicon.sh` preflight rejected hosts in High Power Mode because it only awk'd for the legacy `lowpowermode` key (absent on systems where the user hasn't toggled LPM). Fixed in main-repo commit `adf85e76`: now also reads the newer `powermode` key (0=normal, 1=low, 2=high) and treats absence as "not in LPM". Same commit makes the script prefer `hf` over the deprecated `huggingface-cli`.
+- SwiftLM appears to drop the TCP connection rather than return an error response when a thinking-mode model can't fit a 32K prompt — `Qwen3-4B` and `Qwen3-8B` both fail with `RemoteDisconnected` at 32K, not an HTTP 400. Worth investigating whether this is a config issue (KV cache size?) or a SwiftLM bug.
+
 ## 1. ollama context-sweep at 4K / 8K / 16K / 32K / 48K / 64K
 
 **Why**: The blog claims "SwiftLM beats ollama on the short-context A/B." That A/B was ~500-token input only. We never ran ollama at higher contexts, so the claim "SwiftLM wins at long context" isn't supported by data — it could be true, false, or flip at some context size. We currently can't tell.
@@ -26,25 +38,21 @@ Run order is rough priority — highest-value first. Numbers under "Effort" are 
 
 **Why**: The blog's LLM matrix shows three small models with clean 2026-05-16 numbers (`Llama-3.2-3B`, `Phi-4-mini`, `Qwen3-4B`) and five larger models with † markers (Low-Power-Mode tainted, expect 2–6× slow). The † rows need clean re-benches before the matrix can drop the daggers.
 
-**What to run** (pending list from `experiments/swiftlm/results-vlm-phase2/SUMMARY.md`):
+**What to run** (pending list from `experiments/swiftlm/results-vlm-phase2/SUMMARY.md`, updated 2026-05-16):
 
-- `mlx-community/Qwen3-8B-4bit`
-- `mlx-community/gpt-oss-20b-MXFP4-Q4`
-- `mlx-community/Qwen3.6-35B-A3B-4bit` (+`--thinking`)
-- `mlx-community/Gemma-4-26B-A4B-it-4bit`
-- `mlx-community/Qwen3-Coder-30B-A3B-Instruct-MLX-4bit`
-- `mlx-community/Qwen3-Next-80B-A3B-Instruct-4bit` (+`--thinking`)
-- `mlx-community/gemma-4-e2b-it-4bit` (LLM-mode) &mdash; *new*. Same weights we tested on
-  Intel CPU (where `gemma4:e2b` decodes 6 tok/s @ 32 K). Adds the apples-to-apples cross-arch
-  row: Intel vs M1 Max on identical 2.3 B effective-param model. Currently the LLM matrix only
-  has the much-larger Qwen3.6-35B for M1 Max past 32 K, so cross-hardware decode comparisons
-  in that row are not directly meaningful.
+- ~~`mlx-community/Qwen3-8B-4bit`~~ ✅ done (32K is RemoteDisconnected — see status above; 4K/8K/16K clean)
+- `mlx-community/gpt-oss-20b-MXFP4-Q4` — **isolated re-bench** (SwiftLM segfaulted in batch run; only 4K landed)
+- `mlx-community/Qwen3.6-35B-A3B-4bit` (+`--thinking`) — **48K/64K still pending** (4K-32K captured from log)
+- `mlx-community/Gemma-4-26B-A4B-it-4bit` — untouched
+- `mlx-community/Qwen3-Coder-30B-A3B-Instruct-MLX-4bit` — untouched
+- `mlx-community/Qwen3-Next-80B-A3B-Instruct-4bit` (+`--thinking`) — untouched
+- ~~`mlx-community/gemma-4-e2b-it-4bit` (LLM-mode)~~ ✅ done (4K-32K); 64K standalone in flight. Cross-arch finding above.
 
-**Method**: `swiftlm/sweep_llm_rebench.sh` already exists and is set up for this. Resume where it paused.
+**Method**: `swiftlm/sweep_llm_rebench.sh` already exists and is set up for this. Resume where it paused. **Wait for the ctx_sweep.py incremental-write patch before doing the large models** — otherwise another battery event loses the in-flight ctx point. Alternatively, run one model at a time and write per-ctx checkpoint logs alongside.
 
-**Effort**: ~6 hours unattended.
+**Effort**: ~4–5 hours unattended (was ~6 — three models already benched).
 
-**Blocked claim**: The Apple Silicon LLM matrix as a whole — half the numbers carry † today.
+**Blocked claim**: The Apple Silicon LLM matrix as a whole — half the numbers carry † today, dropping to ~40 % after the 2026-05-16 session.
 
 ## 3. Gemma-4-26B coherence at 64 K (targeted)
 
