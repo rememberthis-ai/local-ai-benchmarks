@@ -8,7 +8,7 @@ Run order is rough priority — highest-value first. Numbers under "Effort" are 
 - ✅ `Qwen3-8B-4bit` (thinking) — 4K=37, 8K=30, 16K=22 tok/s; 32K errors with RemoteDisconnected (same failure mode as Qwen3-4B; SwiftLM closes the connection past 16K in thinking mode).
 - 🟡 `gpt-oss-20b-MXFP4-Q4` — 4K=26 tok/s only. SwiftLM **segfaulted** at 8K (`Segmentation fault: 11`); 16K-64K all `ConnectionRefused`. Needs an isolated re-bench, not part of the bulk script.
 - 🟡 `Qwen3.6-35B-A3B-4bit` (thinking) — 4K=42, 8K=33, 16K=23, 32K=13 tok/s captured **from the sweep log only**; ctx_sweep.py writes the result file at the very end, so killing mid-sweep (battery hit 4 %) lost the in-flight 48K row and never wrote the .md. 48K/64K still need re-runs.
-- ✅ `gemma-4-e2b-it-4bit` (LLM-mode) — 4K=32, 8K=17, 16K=8, 32K=2.8 tok/s. **Cross-arch finding: Intel CPU `gemma4:e2b` via ollama was 6 tok/s @ 32K — M1 Max SwiftLM is slower at 32K on the same weights.** Decode halves per ctx doubling, then crashes between 16K and 32K (classic small-MoE degradation curve). 64K point in flight at end of session.
+- ✅ `gemma-4-e2b-it-4bit` (LLM-mode) — full 4K–64K row landed: 4K=32, 8K=17, 16K=8, 32K=2.8, 48K=1.61 e2e (SwiftLM-internal `predicted_per_second` of 0.4 is anomalously low at 48K; e2e is the consistent metric), 64K=1.1 tok/s. **Cross-arch finding: Intel CPU `gemma4:e2b` via ollama is 6 tok/s @ 32K — M1 Max SwiftLM is ~2× slower at 32K on the same weights.** Decode halves per ctx doubling, sharper degradation past 16K (classic small-MoE pattern). **64K is still coherent in the output snippet** — no Gemma-style collapse at this model size (relevant to item #3 below: the 80K collapse is a 26B-parent phenomenon, not inherent to the gemma4 family). The ollama-on-M1-Max comparison for `gemma4:e2b` is still pending — the model is 7.2 GB and not cached locally.
 
 **Tooling issues uncovered:**
 
@@ -46,7 +46,7 @@ Run order is rough priority — highest-value first. Numbers under "Effort" are 
 - `mlx-community/Gemma-4-26B-A4B-it-4bit` — untouched
 - `mlx-community/Qwen3-Coder-30B-A3B-Instruct-MLX-4bit` — untouched
 - `mlx-community/Qwen3-Next-80B-A3B-Instruct-4bit` (+`--thinking`) — untouched
-- ~~`mlx-community/gemma-4-e2b-it-4bit` (LLM-mode)~~ ✅ done (4K-32K); 64K standalone in flight. Cross-arch finding above.
+- ~~`mlx-community/gemma-4-e2b-it-4bit` (LLM-mode)~~ ✅ **full 4K–64K row done.** Cross-arch finding above.
 
 **Method**: `swiftlm/sweep_llm_rebench.sh` already exists and is set up for this. Resume where it paused. **Wait for the ctx_sweep.py incremental-write patch before doing the large models** — otherwise another battery event loses the in-flight ctx point. Alternatively, run one model at a time and write per-ctx checkpoint logs alongside.
 
