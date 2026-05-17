@@ -106,9 +106,43 @@ The April **clean voice memo** is closer to the typical Remember This workload (
 4. **Cross-arch**: Intel CPU `cpu_n2` clean voice memo (April) = 1.35 s/audio-s. M1 Max Metal = 0.03 s/audio-s on the same clip class. **~45 × speedup.** That's the real story for the matrix.
 5. **Open**: figure out how to actually force CPU on M1 Max sona (or accept that "CPU vs Metal" isn't a real choice on Apple Silicon — Metal is always available and always used). Until then, the M1 Max rows of the matrix only have one meaningful number: "Metal, regardless of thread count, ~0.03 s/audio-s on clean speech."
 
-### Full-chapter follow-up (in progress)
+### 60 s clip — re-run with fixed harness (2026-05-17, post-patch)
 
-Re-running against the full ~65 min Holmes chapter mp3 so per-arm inference time dominates over fixed setup overhead. Numbers landing as bench finishes — will replace this paragraph with the table.
+After patching the harness to use `sona serve --no-gpu` HTTP API instead of `sona transcribe --gpu-device -2` (the latter is a no-op on Apple Silicon — see Findings #1 above and `gotchas/sona-gpu-device-2-noop.md`), the same 60 s clip now produces meaningful per-arm differences:
+
+| Arm | Wall (s) | Sec-per-audio-sec | CPU avg / peak (%) |
+|---|---:|---:|---:|
+| `cpu_n1`        | 52.19  | 0.87  | 104 / 110 |
+| `cpu_n2` ⚠️     | 208.27 | **3.47** | 120 / 153 |
+| `cpu_n4`        | 16.66  | 0.28  | 125 / 205 |
+| `cpu_n6`        | 12.26  | 0.20  | 127 / 207 |
+| **`cpu_n8`** ★  | 10.44  | **0.17** | 125 / 206 |
+| `cpu_n10`       | 11.90  | 0.20  | 111 / 127 |
+| `metal_n1`      | 1.46   | 0.02  | 43 / 73  |
+| `metal_n2`      | 1.41   | 0.02  | 42 / 71  |
+| **`metal_n4`** ★| 1.39   | **0.02** | 42 / 71 |
+| `metal_n6`      | 1.38   | 0.02  | 42 / 73  |
+| `metal_n8`      | 1.38   | 0.02  | 36 / 60  |
+| `metal_n10`     | 1.38   | 0.02  | 39 / 67  |
+
+**Findings (corrected):**
+
+1. **Metal is 8.5× faster than the best CPU arm on M1 Max** (0.02 vs 0.17 s/audio-s). The earlier "all arms tied" result was the harness bug, not a hardware property. This matches Apple-Silicon expectations — unified memory makes the GPU path strictly better for whisper inference.
+2. **CPU sweet spot is `--threads 8`** (one thread per M1 Max performance core; the chip has 8 perf + 2 efficiency cores). n=10 regresses slightly — pulling efficiency cores into the pool adds contention without adding compute.
+3. **Metal arms still tie at 60 s** (1.38-1.46 s across all 6) — Metal inference is so fast on M1 Max that even 60 s of audio is dominated by ~1.4 s of fixed model-load + Metal kernel compilation. Per-arm Metal CPU usage of ~42 % is the whisper-side tokenizer/beam-search overhead, NOT inference. Thread count below n=8 doesn't matter for Metal because the CPU side is light.
+4. **🚨 cpu_n2 anomaly**: 3.47 s/audio-s is wildly out of line vs n=1 (0.87) and n=4 (0.28). Likely transient contention from a background process (Spotlight/sleep wake/etc.) during the cpu_n2 arm. Re-run to confirm — but n=1 and n=4 onward form a clean curve.
+5. **Production setting (RT/MT `cpu_only_transcription`) is effective**. The setting flows through `core-lib/src/integrations/transcription/whisper.rs` → `SonaProcess::spawn(no_gpu=true)` → `sona serve --no-gpu`, which is the only working CPU-disable on Apple Silicon. Verified: enabling it changes inference from Metal (0.02 s/audio-s) to CPU (0.17 s/audio-s at n=8) — an 8.5× slowdown.
+
+### Cross-arch summary (clean LibriVox clip, both clean systems)
+
+| Hardware | Best arm | Sec-per-audio-sec | Notes |
+|---|---|---:|---|
+| Intel i9-8950HK + Polaris dGPU | `metal_n4` | 1.70 | Metal (dGPU) narrowly beats CPU |
+| M1 Max (Apple Silicon) | `metal_n4` | **0.02** | Metal (unified memory) dominates; 85× faster than Intel best |
+
+### Full-chapter follow-up (queued, not yet run)
+
+The full ~65 min Holmes chapter mp3 (`/tmp/holmes_full.mp3`, 31 MB) is downloaded but not yet bench-run. Useful to confirm: (a) whether Metal arms diverge on a longer clip (still overhead-dominated at 60 s); (b) whether the cpu_n2 anomaly reproduces or was a one-off. **Setup cost for the long clip is the same ~1.4 s, so per-arm Metal time should grow from 1.38 s by ~(audio_length/60) × 0.02 s — for 65 min audio ~80 s wall, vs CPU at n=8 ~660 s wall.**
 
 ## Discrete-GPU note for dual-GPU Intel MacBooks
 
