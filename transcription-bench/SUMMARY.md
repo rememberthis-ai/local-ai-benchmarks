@@ -19,63 +19,46 @@ Two clean runs on the same hardware, different audio sources. Both confirm the s
 
 Source: `docs/technical/INTEL-METAL-BENCH.md` in the private monorepo. CPU is **1.7×** faster than Metal here. Same machine.
 
-### Dense conversational audio run — first pass (2026-05-17 AM, **contaminated**)
+### LibriVox Sherlock Holmes — canonical public reference (2026-05-17, corrected)
 
-60 s clip from a 14-minute conversational Evernote recording (private, not reproducible). First pass below; superseded by the clean re-run below it.
+`audio/holmes_clip60.wav` (committed in this repo via LFS, public domain — see `audio/README.md`). Single audiobook narrator, clean studio recording, moderate pace. Clean system: no concurrent sona, no cargo/Xcode builds, AC + High Power. **Bench harness uses `sona serve --no-gpu` HTTP API** — the same code path RT/MT use in production. (Earlier `sona transcribe --gpu-device -2` runs were silently running Metal regardless of the flag; superseded.)
 
-| Arm | Wall clock | Sec-per-audio-sec |
-|---|---:|---:|
-| `cpu_n4` | 242.8 s | 4.05 |
-| `metal_n2` | 261.6 s | 4.36 |
-| `cpu_n2` | 267.3 s | 4.46 |
-| `metal_n4` | 292.7 s | 4.88 |
+| Arm | Wall clock | Sec-per-audio-sec | CPU avg / peak |
+|---|---:|---:|---:|
+| **`cpu_n4`** ★ | 47.78 s | **0.80** | 443 % / 572 % |
+| `cpu_n2` | 71.94 s | 1.20 | 335 % / 534 % |
+| `metal_n4` | 99.89 s | 1.66 | 209 % / 352 % |
+| `metal_n2` | 118.29 s | 1.97 | 198 % / 344 % |
 
-⚠️ **These numbers are 30-45 % too slow.** Re-bench on the same clip the next morning (clean system, no concurrent sona, no Xcode build) produced 2.68-3.10 s/audio-s across all arms. The contamination story changes the qualitative ranking — see next section.
+Reproduces the April voice memo result on a completely different (open, reproducible) clip: **CPU is ~2× faster than Metal on Intel Polaris dGPU.** Whisper's mat-mul-heavy decoder is a poor fit for shared-memory dGPU.
 
-### Dense conversational audio run — clean re-bench (2026-05-17 morning)
+Two new findings this clip adds:
 
-Same 60 s private clip, fully clean system this time:
+1. **`cpu_n4` is faster than `cpu_n2`** on this audio (47s vs 72s, 1.5× win). April voice memo showed n=2 winning n=4 by 3 s — likely sample variance or speech-rate; the gap there was within noise, while here it's decisive. **The current RT/MT default of `n_threads=2` on Intel may be leaving 33 % wall-clock on the table** depending on the workload.
+2. **Metal does free the machine.** Metal arms use ~200 % CPU (≈ 2 cores) vs CPU arms at 335–443 %. If you want to keep using the Mac while transcription runs, Metal at `n=2` is the lowest-impact arm. If you want raw throughput, CPU at `n=4` runs **faster than real-time** (0.80 sec/audio-s) — the entire 60 s clip transcribes in 48 s.
 
-| Arm | Wall clock | Sec-per-audio-sec |
-|---|---:|---:|
-| **`cpu_n4`** | 161.06 s | **2.68** |
-| **`metal_n4`** | 160.52 s | **2.68** |
-| `cpu_n2` | 185.76 s | 3.10 |
-| `metal_n2` | 186.07 s | 3.10 |
+### What we know now (post-bug-fix)
 
-On this clip, with a clean system, **CPU and Metal are tied at each thread count** — the first-pass finding that "metal_n4 is the worst arm" turned out to be contamination, not a real effect. Higher thread count (4 vs 2) is a clean 15 % win regardless of backend on this dense workload.
+1. **Contamination still dominates if you let it happen.** Second sona process, cargo build, or Xcode rebuild changes the answer by 30-45 %. Always check `pgrep -fl sona`, `pgrep -fl cargo`, and Activity Monitor before claiming a result.
+2. **CPU beats Metal on Intel — confirmed across two clips now.** April voice memo and May LibriVox Holmes both show CPU ~1.7-2× faster than Metal on i9-8950HK + Polaris. The earlier "audio-dependent" hypothesis was wrong: it was the broken `--gpu-device -2` flag silently running Metal in the "CPU" arms.
+3. **Apple Silicon flips the result completely.** Same harness on M1 Max (see Apple Silicon section below): Metal is 8.5× faster than CPU. Unified-memory architecture turns the dGPU bottleneck into an advantage.
+4. **Speed vs responsiveness trade-off is real on Intel.** CPU wins wall-clock but uses 3-4 cores; Metal loses wall-clock but only uses ~2 cores. Default to CPU for "transcribe and wait"; choose Metal if you want to keep editing while a long file processes.
 
-### Clean-speech reference run on the canonical LibriVox clip (2026-05-17)
+### Why the absolute number varies across audio
 
-`audio/holmes_clip60.wav` (committed in this repo, public domain — see `audio/README.md`). Single audiobook narrator, clean studio recording, moderate pace. Clean system: no concurrent sona, no cargo/Xcode builds, AC + High Power.
+Whisper's decoder generates one token at a time and the number of tokens scales with the speech rate + content density of the audio. A 60 s monologue may produce 100 tokens; 60 s of a fast-paced conversation with mid-sentence interruptions and proper nouns may produce 250+ tokens. The same 60 s audio file can have a 2-3× ratio in compute time depending on content. The April voice memo and the LibriVox Holmes clip are both in the "clean monologue" regime; they agree closely. Dense conversational audio would land elsewhere — see the FDR clip (different regime) and dense-conversational private-clip findings in the bench-bug retracted-runs appendix.
 
-| Arm | Wall clock | Sec-per-audio-sec |
-|---|---:|---:|
-| **`metal_n4`** ★ | 101.87 s | **1.70** |
-| `cpu_n4` | 114.73 s | 1.91 |
-| `metal_n2` | 124.00 s | 2.07 |
-| `cpu_n2` | 134.58 s | 2.24 |
+### Retracted runs (broken `--gpu-device -2`)
 
-**This is the bench anyone with the same hardware can reproduce.** And on this clip, Metal beats CPU at each thread count — opposite of the April voice memo result on the same machine. Same sona, same model, same system; only the audio differs.
+The following runs are kept for the audit trail but **superseded by the LibriVox table above.** They all used the now-known-broken `sona transcribe --gpu-device -2` "force CPU" hack, which silently fell through to Metal on this hardware. The numbers labeled "cpu_*" in these tables actually ran Metal:
 
-(Extended thread-sweep n=1/2/4/6/8 × {CPU, Metal} with `%cpu` sampling is a follow-up — see `sona_bench_extended.sh`.)
+| Run | Setup | Status |
+|---|---|---|
+| 2026-05-17 AM dense audio (first pass) | Private Evernote clip, `--gpu-device -2`, contaminated | Bench code was broken; numbers are all-Metal under contamination |
+| 2026-05-17 morning dense audio (re-bench) | Private Evernote clip, `--gpu-device -2`, clean | Bench code was broken; "tied at each thread count" was actually Metal-vs-Metal |
+| 2026-05-17 LibriVox first pass | Holmes clip, `--gpu-device -2`, clean | Bench code was broken; "Metal wins" finding was Metal-vs-Metal |
 
-### What we know across all three runs
-
-1. **Contamination dominates everything else.** A second sona process, a cargo build, or Xcode rebuilding in the background changes the answer by 30-45 % — bigger than the difference between any two arms. Always check `pgrep -fl sona`, `pgrep -fl cargo`, and Activity Monitor before claiming a result.
-2. **CPU vs Metal on Intel: claim retracted, pending re-verification.** Three runs on the same i9-8950HK:
-   - April clean voice memo: **CPU wins** (1.35 vs 2.54, CPU 1.7× faster). System state at the time is no longer verifiable — possible the bench was run with contaminating processes we'd now check for.
-   - May 17 dense conversational private clip: **tied** (2.68 ≈ 2.68 at n=4; 3.10 ≈ 3.10 at n=2). Clean re-bench of an earlier contaminated run.
-   - May 17 LibriVox studio narrator: **Metal wins** (1.70 vs 1.91 at n=4, Metal 11 % faster). Clean system. Public-domain reproducible clip.
-
-   The earlier blog framing "CPU beats Metal on Intel" doesn't hold across all three runs. Two competing explanations: (a) **the April result was contaminated** and the real answer on this hardware is "Metal wins or ties" across regimes; or (b) **the result is genuinely audio-dependent** (voice memo with pauses → CPU; continuous narration → Metal). Distinguishing these requires another voice-memo-regime open clip benched in clean conditions — queued (FDR fireside chat candidate). Until then, treat the cross-regime comparison as open.
-3. **Wall-clock varies 3-4× with audio density.** Don't compare absolute numbers across audio sources. Compare arms-within-a-run.
-
-### Why the absolute number varies
-
-Whisper's decoder generates one token at a time and the number of tokens scales with the speech rate + content density of the audio. A 60 s monologue may produce 100 tokens; 60 s of a fast-paced conversation with mid-sentence interruptions and proper nouns may produce 250+ tokens. The same 60 s audio file can have a 2-3× ratio in compute time depending on content.
-
-The April **clean voice memo** is closer to the typical Remember This workload (a personal voice memo dictated by one speaker). The May 17 dense audio is closer to what someone would feed My Transcriber for meeting transcription — useful as the "worst-case under typical use" number. The LibriVox clip is studio-narrator-clean — close to the voice memo regime but reproducible on any machine.
+The "1.7× CPU advantage" April INTEL-METAL-BENCH.md was unaffected — it used `sona serve --no-gpu` HTTP API (the correct method), same as the corrected harness above.
 
 ## Apple Silicon (M1 Max / 64 GB) — first pass: 60 s clip too short
 
@@ -133,12 +116,16 @@ After patching the harness to use `sona serve --no-gpu` HTTP API instead of `son
 4. **🚨 cpu_n2 anomaly**: 3.47 s/audio-s is wildly out of line vs n=1 (0.87) and n=4 (0.28). Likely transient contention from a background process (Spotlight/sleep wake/etc.) during the cpu_n2 arm. Re-run to confirm — but n=1 and n=4 onward form a clean curve.
 5. **Production setting (RT/MT `cpu_only_transcription`) is effective**. The setting flows through `core-lib/src/integrations/transcription/whisper.rs` → `SonaProcess::spawn(no_gpu=true)` → `sona serve --no-gpu`, which is the only working CPU-disable on Apple Silicon. Verified: enabling it changes inference from Metal (0.02 s/audio-s) to CPU (0.17 s/audio-s at n=8) — an 8.5× slowdown.
 
-### Cross-arch summary (clean LibriVox clip, both clean systems)
+### Cross-arch summary (clean LibriVox clip, both clean systems, post-bug-fix harness)
 
 | Hardware | Best arm | Sec-per-audio-sec | Notes |
 |---|---|---:|---|
-| Intel i9-8950HK + Polaris dGPU | `metal_n4` | 1.70 | Metal (dGPU) narrowly beats CPU |
-| M1 Max (Apple Silicon) | `metal_n4` | **0.02** | Metal (unified memory) dominates; 85× faster than Intel best |
+| Intel i9-8950HK + Polaris dGPU | **`cpu_n4`** | **0.80** | CPU 2× faster than Metal (Polaris dGPU is a bottleneck) |
+| M1 Max (Apple Silicon) | **`metal_n4`** | **0.02** | Metal 8.5× faster than CPU (unified memory wins) |
+
+**Cross-arch headline: M1 Max Metal is 40× faster than Intel's best path (CPU+n=4).** Apple Silicon flips both the answer ("use Metal" vs "use CPU") AND wins the absolute speed race by a large margin.
+
+(Earlier draft of this table said "Intel metal_n4 1.70 → M1 Max 85× faster than Intel best" — that cited the now-superseded broken-harness Intel numbers where the "CPU" arms were silently running Metal. The corrected Intel numbers above are from the same `sona serve --no-gpu` HTTP harness as the M1 Max data, so the 40× cross-arch comparison is apples-to-apples.)
 
 ### Full-chapter follow-up (queued, not yet run)
 
