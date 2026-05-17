@@ -86,14 +86,44 @@ run_arm() {
   echo "=== ${label} (gpu_device=${gpu}, threads=${threads}) ==="
   local cpu_log="/tmp/sona_${label}.cpu"
   : > "$cpu_log"
-  local t0=$(date +%s.%N)
-  "$SONA" transcribe \
-    --gpu-device "$gpu" \
-    --threads "$threads" \
-    --language "$LANGUAGE" \
-    "$MODEL" "$CLIP" \
-    > "/tmp/sona_${label}.txt" 2> "/tmp/sona_${label}.stderr" &
+
+  # Pick a deterministic port per arm so concurrent benches don't collide.
+  # 5500-5599 is unlikely to overlap with anything else on a dev machine.
+  local port=$((5500 + RANDOM % 100))
+
+  # gpu=-2 is our convention for "force CPU"; on Apple Silicon this MUST
+  # translate to `serve --no-gpu`, NOT `transcribe --gpu-device -2`, because
+  # sona's transcribe subcommand silently falls back to Metal regardless of
+  # gpu-device value (verified 2026-05-17 — sona's whisper_init_with_params
+  # logs `use gpu = 1, gpu_device = 0` even with `--gpu-device -2`). The
+  # serve mode's `--no-gpu` flag is what RT/MT use in production and what
+  # actually disables Metal at the whisper init level (`use gpu = 0`).
+  local serve_args=("serve" "--port" "$port")
+  if [[ "$gpu" == "-2" ]]; then
+    serve_args+=("--no-gpu")
+  fi
+
+  "$SONA" "${serve_args[@]}" > "/tmp/sona_${label}.serve.log" 2>&1 &
   local sona_pid=$!
+
+  # Wait for /health to respond (ready signal)
+  local ready=0
+  for i in $(seq 1 30); do
+    if curl -sf --max-time 1 "http://127.0.0.1:${port}/health" > /dev/null 2>&1; then
+      ready=1; break
+    fi
+    sleep 1
+  done
+  if [[ $ready -ne 1 ]]; then
+    echo "warning: sona serve did not become ready on port $port (see /tmp/sona_${label}.serve.log)" >&2
+    kill -9 $sona_pid 2>/dev/null; return
+  fi
+
+  # Load model (separate from transcription time — matches RT/MT lifecycle)
+  curl -s -X POST "http://127.0.0.1:${port}/v1/models/load" \
+    -H "Content-Type: application/json" \
+    -d "{\"path\":\"$MODEL\"}" > /dev/null
+
   # 1 Hz %cpu sampler — covers all sona threads.
   (
     while kill -0 "$sona_pid" 2>/dev/null; do
@@ -102,13 +132,24 @@ run_arm() {
     done
   ) &
   local sampler_pid=$!
-  wait "$sona_pid"
-  local sona_rc=$?
-  kill "$sampler_pid" 2>/dev/null || true
+
+  # Run transcription via HTTP (matches RT/MT production code path)
+  local t0=$(date +%s.%N)
+  curl -s -X POST "http://127.0.0.1:${port}/v1/audio/transcriptions" \
+    -F "file=@${CLIP}" \
+    -F "language=${LANGUAGE}" \
+    -F "n_threads=${threads}" \
+    > "/tmp/sona_${label}.txt" 2> "/tmp/sona_${label}.stderr"
   local t1=$(date +%s.%N)
-  if [[ $sona_rc -ne 0 ]]; then
-    echo "warning: sona exited with code $sona_rc (see /tmp/sona_${label}.stderr)" >&2
-  fi
+
+  kill "$sampler_pid" 2>/dev/null || true
+  # `set -e` is on, so we have to `|| true` every kill — sona may already
+  # be dead by the time the second kill -9 runs, and that non-zero rc would
+  # otherwise blow up the whole bench between arms.
+  kill "$sona_pid" 2>/dev/null || true
+  sleep 1
+  kill -9 "$sona_pid" 2>/dev/null || true
+
   local wall=$(awk -v t0="$t0" -v t1="$t1" 'BEGIN{printf "%.2f", t1-t0}')
   local sps=$(awk -v w="$wall" -v a="$AUDIO_S" 'BEGIN{printf "%.2f", w/a}')
   local cpu_avg cpu_peak n
@@ -130,9 +171,10 @@ if [[ "${SONA_BENCH_DEFINE_ONLY:-0}" == "1" ]]; then
   return 0
 fi
 
-# `--gpu-device -2` is sona's "force CPU" idiom (no valid index, falls
-# back to CPU). `--gpu-device 0` is the first Metal device — on Intel
-# dual-GPU it's the dGPU; on Apple Silicon it's the unified GPU.
+# gpu=-2 → script will spawn `sona serve --no-gpu` (actually disables Metal
+# on Apple Silicon). gpu=0 → script spawns `sona serve` (Metal default).
+# Transcribe-time `n_threads` is sent via the HTTP API per-request, so it
+# affects each arm independently.
 run_arm cpu_n2     -2 2
 run_arm cpu_n4     -2 4
 run_arm metal_n2    0 2
