@@ -5,16 +5,20 @@ Whisper-via-sona transcription bench for Remember This + My Transcriber. Reports
 ## Quick start
 
 ```bash
-# Prep audio (any voice memo, m4a/wav/mp3, picks the first 60s):
-ffmpeg -y -i /path/to/voice-memo.m4a -ss 0 -t 60 -ar 16000 -ac 1 /tmp/clip60.wav
+# 1. Pull the canonical reference audio (60 s LibriVox clip, see audio/README.md).
+#    Repo uses git-lfs — if you didn't have it installed when you cloned, do it now:
+git lfs install
+git lfs pull
 
-# Quit My Transcriber + Remember This first (sona contention).
-# Plug in AC, set Power Mode to High Power if available.
+# 2. Quit My Transcriber + Remember This first (sona contention).
+# 3. Plug in AC. On Macs that expose macOS Power Mode, set it to High Power.
 
 ./sona_bench.sh
 ```
 
 Output: a 4-row summary table + per-arm transcripts in `/tmp/sona_<arm>.txt` + a CSV at `/tmp/sona_bench.csv`. Hardware fingerprint printed at the bottom — copy this into the result row when adding to `SUMMARY.md`.
+
+The reference clip is committed at `audio/holmes_clip60.wav` (60 s LibriVox Sherlock Holmes ch.1, public domain — see [`audio/README.md`](audio/README.md)) so cross-machine numbers compare apples-to-apples. To bench your own audio, set `CLIP=/path/to/your.wav AUDIO_S=<seconds>`.
 
 ## Environment overrides
 

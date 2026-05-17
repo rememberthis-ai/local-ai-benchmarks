@@ -6,10 +6,15 @@
 # on a fixed audio clip. Reports seconds-to-transcribe-1-second-of-audio
 # — the user-facing metric the blog post uses — for each arm.
 #
-# Default audio is a 60 s clip the caller provides at $CLIP. Generate
-# one from any voice memo:
+# Default audio is the public-domain LibriVox Sherlock Holmes clip
+# committed to this repo at audio/holmes_clip60.wav (60 s, 16 kHz mono
+# WAV). Pull via git-lfs first, or override $CLIP with your own audio.
 #
-#   ffmpeg -y -i input.m4a -ss 0 -t 60 -ar 16000 -ac 1 /tmp/clip60.wav
+# To generate the same clip from scratch instead of pulling LFS:
+#
+#   curl -sLo /tmp/holmes_ch1.mp3 \
+#     https://archive.org/download/adventures_holmes/adventureholmes_01_doyle_64kb.mp3
+#   ffmpeg -y -i /tmp/holmes_ch1.mp3 -ss 0 -t 60 -ar 16000 -ac 1 audio/holmes_clip60.wav
 #
 # Default model is `ggml-large-v3-turbo.bin` from Remember This's data
 # dir. Override via env vars (SONA, MODEL, CLIP, AUDIO_S).
@@ -44,7 +49,9 @@ set -euo pipefail
 # Configurable via env vars; defaults to RT install.
 SONA="${SONA:-/Applications/Remember This.app/Contents/MacOS/sona}"
 MODEL="${MODEL:-$HOME/Library/Application Support/RememberThis/models/ggml-large-v3-turbo.bin}"
-CLIP="${CLIP:-/tmp/clip60.wav}"
+# Resolve default clip relative to this script so it works from any cwd.
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+CLIP="${CLIP:-${SCRIPT_DIR}/audio/holmes_clip60.wav}"
 AUDIO_S="${AUDIO_S:-60}"
 RESULT_CSV="${RESULT_CSV:-/tmp/sona_bench.csv}"
 LANGUAGE="${LANGUAGE:-en}"
@@ -77,21 +84,51 @@ fi
 run_arm() {
   local label="$1" gpu="$2" threads="$3"
   echo "=== ${label} (gpu_device=${gpu}, threads=${threads}) ==="
+  local cpu_log="/tmp/sona_${label}.cpu"
+  : > "$cpu_log"
   local t0=$(date +%s.%N)
   "$SONA" transcribe \
     --gpu-device "$gpu" \
     --threads "$threads" \
     --language "$LANGUAGE" \
     "$MODEL" "$CLIP" \
-    > "/tmp/sona_${label}.txt" 2> "/tmp/sona_${label}.stderr"
+    > "/tmp/sona_${label}.txt" 2> "/tmp/sona_${label}.stderr" &
+  local sona_pid=$!
+  # 1 Hz %cpu sampler — covers all sona threads.
+  (
+    while kill -0 "$sona_pid" 2>/dev/null; do
+      ps -o %cpu= -p "$sona_pid" 2>/dev/null | awk '{printf "%s\n", $1}' >> "$cpu_log"
+      sleep 1
+    done
+  ) &
+  local sampler_pid=$!
+  wait "$sona_pid"
+  local sona_rc=$?
+  kill "$sampler_pid" 2>/dev/null || true
   local t1=$(date +%s.%N)
+  if [[ $sona_rc -ne 0 ]]; then
+    echo "warning: sona exited with code $sona_rc (see /tmp/sona_${label}.stderr)" >&2
+  fi
   local wall=$(awk -v t0="$t0" -v t1="$t1" 'BEGIN{printf "%.2f", t1-t0}')
   local sps=$(awk -v w="$wall" -v a="$AUDIO_S" 'BEGIN{printf "%.2f", w/a}')
-  echo "wall=${wall}s · audio=${AUDIO_S}s · sec-per-audio-sec=${sps}"
-  echo "$label,$gpu,$threads,$wall,$sps" >> "$RESULT_CSV"
+  local cpu_avg cpu_peak n
+  read cpu_avg cpu_peak n < <(awk '
+    { sum += $1; if ($1 > peak) peak = $1; n++ }
+    END {
+      if (n == 0) print "0 0 0"
+      else printf "%.0f %.0f %d\n", sum/n, peak, n
+    }' "$cpu_log")
+  echo "wall=${wall}s · audio=${AUDIO_S}s · sec-per-audio-sec=${sps} · cpu_avg=${cpu_avg}% · cpu_peak=${cpu_peak}% (n=${n})"
+  echo "$label,$gpu,$threads,$wall,$sps,$cpu_avg,$cpu_peak,$n" >> "$RESULT_CSV"
 }
 
-echo "label,gpu_device,threads,wall_s,sec_per_audio_s" > "$RESULT_CSV"
+echo "label,gpu_device,threads,wall_s,sec_per_audio_s,cpu_avg_pct,cpu_peak_pct,cpu_samples" > "$RESULT_CSV"
+
+# `sona_bench_extended.sh` sources this file for the helpers but runs
+# its own arm list — skip the default sweep when that's the case.
+if [[ "${SONA_BENCH_DEFINE_ONLY:-0}" == "1" ]]; then
+  return 0
+fi
 
 # `--gpu-device -2` is sona's "force CPU" idiom (no valid index, falls
 # back to CPU). `--gpu-device 0` is the first Metal device — on Intel
