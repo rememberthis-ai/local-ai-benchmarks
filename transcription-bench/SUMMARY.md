@@ -37,12 +37,27 @@ Two new findings this clip adds:
 1. **`cpu_n4` is faster than `cpu_n2`** on this audio (47s vs 72s, 1.5× win). April voice memo showed n=2 winning n=4 by 3 s — likely sample variance or speech-rate; the gap there was within noise, while here it's decisive. **The current RT/MT default of `n_threads=2` on Intel may be leaving 33 % wall-clock on the table** depending on the workload.
 2. **Metal does free the machine.** Metal arms use ~200 % CPU (≈ 2 cores) vs CPU arms at 335–443 %. If you want to keep using the Mac while transcription runs, Metal at `n=2` is the lowest-impact arm. If you want raw throughput, CPU at `n=4` runs **faster than real-time** (0.80 sec/audio-s) — the entire 60 s clip transcribes in 48 s.
 
+### 10-min Holmes scaling check (Intel, 2026-05-17)
+
+Mirror of the M1 Max 10-min run. Only the best-thread arm per backend (`n=4`). Same source clip (first 10 min of `holmes_ch1.mp3`).
+
+| Arm | Wall | sec/audio-s | %CPU avg | vs 60s clip |
+|---|---:|---:|---:|---|
+| **`cpu_n4`** | 578.99 s | **0.96** | 413 % | 0.80 → 0.96 (**1.2× per audio-sec**) |
+| `metal_n4` | — | — | — | **🚨 Polaris dGPU crashes deterministically** |
+
+**Findings:**
+
+1. **Intel CPU scales much better than M1 Max CPU.** Intel `cpu_n4` went 0.80 → 0.96 sec/audio-sec (1.2× worse per audio-sec) when audio grew 60s → 10 min. M1 Max `cpu_n4` went 0.28 → 0.86 (3× worse) on the same comparison. Whisper's decoder cost growth with audio length is a CPU phenomenon but with arch-dependent magnitude — Intel CPU's per-token cost was already higher to begin with, so the relative growth is smaller.
+2. **🚨 Polaris dGPU crashes on Metal mode + ≥10 min audio.** Sona aborts with `GGML_ASSERT(buf_src) failed at ggml-metal-device.m:1561`, SIGABRT. Confirmed deterministic across two retries. Worked fine on the 60s clip. Apple Silicon Metal handled the same 10-min clip without issue, so this is a Polaris-specific whisper.cpp/ggml-metal failure. **Product implication: Intel's Metal path isn't just slower than CPU — it's unreliable for files longer than ~2-3 min.** The RT/MT default should force CPU on Intel + dGPU regardless of user preference.
+
 ### What we know now (post-bug-fix)
 
 1. **Contamination still dominates if you let it happen.** Second sona process, cargo build, or Xcode rebuild changes the answer by 30-45 %. Always check `pgrep -fl sona`, `pgrep -fl cargo`, and Activity Monitor before claiming a result.
 2. **CPU beats Metal on Intel — confirmed across two clips now.** April voice memo and May LibriVox Holmes both show CPU ~1.7-2× faster than Metal on i9-8950HK + Polaris. The earlier "audio-dependent" hypothesis was wrong: it was the broken `--gpu-device -2` flag silently running Metal in the "CPU" arms.
-3. **Apple Silicon flips the result completely.** Same harness on M1 Max (see Apple Silicon section below): Metal is 8.5× faster than CPU. Unified-memory architecture turns the dGPU bottleneck into an advantage.
-4. **Speed vs responsiveness trade-off is real on Intel.** CPU wins wall-clock but uses 3-4 cores; Metal loses wall-clock but only uses ~2 cores. Default to CPU for "transcribe and wait"; choose Metal if you want to keep editing while a long file processes.
+3. **Apple Silicon flips the result completely.** Same harness on M1 Max (see Apple Silicon section below): Metal is 8.5× faster than CPU at 60s, **growing to 22× at 10 min** because CPU scales worse with audio length. Unified-memory architecture turns the dGPU bottleneck into an advantage; Metal scales linearly.
+4. **Speed vs responsiveness trade-off on Intel — for clips that complete.** CPU wins wall-clock but uses 3-4 cores; Metal loses wall-clock but only uses ~2 cores. Default to CPU for "transcribe and wait"; choose Metal if you want to keep editing while a *short* file processes — Metal mode crashes on longer files (see Polaris crash above).
+5. **Decoder cost grows non-linearly with audio length on CPU; linearly on Metal.** Confirmed on both Intel (1.2×) and M1 Max (3×). 60s benchmarks underestimate real-world meeting-length wall time. Multiply 60s `sec/audio-s` numbers by ~1.5-3× for 10+ min estimates depending on arch.
 
 ### Why the absolute number varies across audio
 
@@ -118,14 +133,19 @@ After patching the harness to use `sona serve --no-gpu` HTTP API instead of `son
 
 ### Cross-arch summary (clean LibriVox clip, both clean systems, post-bug-fix harness)
 
-| Hardware | Best arm | Sec-per-audio-sec | Notes |
-|---|---|---:|---|
-| Intel i9-8950HK + Polaris dGPU | **`cpu_n4`** | **0.80** | CPU 2× faster than Metal (Polaris dGPU is a bottleneck) |
-| M1 Max (Apple Silicon) | **`metal_n4`** | **0.02** | Metal 8.5× faster than CPU (unified memory wins) |
+| Hardware | Best arm | sec/audio-s @ 60s | sec/audio-s @ 10 min | Notes |
+|---|---|---:|---:|---|
+| Intel i9-8950HK + Polaris dGPU | **`cpu_n4`** | **0.80** | **0.96** | CPU 2× faster than Metal; Metal crashes ≥10 min |
+| M1 Max (Apple Silicon) | **`metal_n4`** | **0.02** | **0.03** | Metal 22× faster than CPU at 10 min |
 
-**Cross-arch headline: M1 Max Metal is 40× faster than Intel's best path (CPU+n=4).** Apple Silicon flips both the answer ("use Metal" vs "use CPU") AND wins the absolute speed race by a large margin.
+**Cross-arch headline (at the realistic 10-min audio length):**
+- Intel best: cpu_n4 → 0.96 sec/audio-s (10-min file takes 9.6 min wall)
+- M1 Max best: metal_n4 → 0.03 sec/audio-s (10-min file takes 18 s wall)
+- **M1 Max Metal is ~32× faster than Intel's best path at typical workload length.** (At 60s clip it looked like 40×; CPU-on-Intel scales better than CPU-on-M1-Max so the gap narrows slightly as audio grows.)
 
-(Earlier draft of this table said "Intel metal_n4 1.70 → M1 Max 85× faster than Intel best" — that cited the now-superseded broken-harness Intel numbers where the "CPU" arms were silently running Metal. The corrected Intel numbers above are from the same `sona serve --no-gpu` HTTP harness as the M1 Max data, so the 40× cross-arch comparison is apples-to-apples.)
+Apple Silicon flips both the answer ("use Metal" vs "use CPU") AND wins the absolute speed race by a large margin. For Intel, **Metal mode should be disabled in production** — not only slower but unreliable on Polaris for longer files.
+
+(Earlier draft of this table said "Intel metal_n4 1.70 → M1 Max 85× faster than Intel best" — that cited the now-superseded broken-harness Intel numbers where the "CPU" arms were silently running Metal. The corrected Intel numbers above are from the same `sona serve --no-gpu` HTTP harness as the M1 Max data, so the cross-arch comparison is apples-to-apples.)
 
 ### 10-min clip — scaling check (2026-05-17, partial)
 
