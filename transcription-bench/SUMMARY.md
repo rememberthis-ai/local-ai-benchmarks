@@ -90,10 +90,11 @@ The April **clean voice memo** is closer to the typical Remember This workload (
 
 **Findings:**
 
-1. **60 s is below the M1 Max bench's resolution.** Every arm lands in 1.81–1.91 s (~5 % spread, well within noise). The bench is dominated by ~1.8 s of fixed model-load + whisper init; inference itself is < 200 ms.
-2. **CPU usage 8–12 % across all arms** — even `cpu_n10` (all-cores CPU-only) barely warms a single core's worth of cycles. This further confirms inference isn't the bottleneck at this audio length.
-3. **Cross-arch**: Intel CPU `cpu_n2` clean voice memo (April) = 1.35 s/audio-s. M1 Max = 0.03 s/audio-s on the same clip class. **~45 × speedup.** That's the real story for the matrix.
-4. **CPU vs Metal on Apple Silicon** can't be distinguished from this clip. Longer audio is needed to see the curve.
+1. **🚨 sona's `--gpu-device -2` "force CPU" idiom DOES NOT WORK on M1 Max.** Verbose run of the CPU arm shows `use gpu = 1`, `gpu_device = 0`, `ggml_metal_device_init: GPU name: Apple M1 Max` — Metal initializes regardless. **All 12 arms in this run actually ran on Metal.** That's why CPU and Metal results are identical at every thread count. The script's `cpu_n*` arms are mislabeled on Apple Silicon; the "force CPU" idiom only works on Intel sona.
+2. **60 s is below the M1 Max bench's resolution.** Every arm lands in 1.81–1.91 s (~5 % spread, well within noise). The bench is dominated by ~1.8 s of fixed model-load + Metal kernel compilation (the verbose run shows ~15 separate `ggml_metal_library_compile_pipeline` lines), then inference itself is < 200 ms.
+3. **CPU usage 8–12 % across all arms** — because every arm was actually Metal. The whisper-side CPU work (tokenizer + beam search) is light; the heavy lifting is on the GPU. Thread count (`--threads N`) only affects the CPU-side wrappers, not Metal inference — which is why n=1 and n=10 are within 5 % of each other.
+4. **Cross-arch**: Intel CPU `cpu_n2` clean voice memo (April) = 1.35 s/audio-s. M1 Max Metal = 0.03 s/audio-s on the same clip class. **~45 × speedup.** That's the real story for the matrix.
+5. **Open**: figure out how to actually force CPU on M1 Max sona (or accept that "CPU vs Metal" isn't a real choice on Apple Silicon — Metal is always available and always used). Until then, the M1 Max rows of the matrix only have one meaningful number: "Metal, regardless of thread count, ~0.03 s/audio-s on clean speech."
 
 ### Full-chapter follow-up (in progress)
 
