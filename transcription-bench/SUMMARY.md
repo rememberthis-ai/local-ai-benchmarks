@@ -63,12 +63,12 @@ On this clip, with a clean system, **CPU and Metal are tied at each thread count
 ### What we know across all three runs
 
 1. **Contamination dominates everything else.** A second sona process, a cargo build, or Xcode rebuilding in the background changes the answer by 30-45 % — bigger than the difference between any two arms. Always check `pgrep -fl sona`, `pgrep -fl cargo`, and Activity Monitor before claiming a result.
-2. **CPU vs Metal on Intel: depends on the audio, not the hardware.** Three runs on the same i9-8950HK:
-   - April clean voice memo: **CPU wins** (1.35 vs 2.54, CPU 1.7× faster)
-   - May 17 dense conversational private clip: **tied** (2.68 ≈ 2.68 at n=4; 3.10 ≈ 3.10 at n=2)
-   - May 17 LibriVox studio narrator: **Metal wins** (1.70 vs 1.91 at n=4, Metal 11 % faster)
+2. **CPU vs Metal on Intel: claim retracted, pending re-verification.** Three runs on the same i9-8950HK:
+   - April clean voice memo: **CPU wins** (1.35 vs 2.54, CPU 1.7× faster). System state at the time is no longer verifiable — possible the bench was run with contaminating processes we'd now check for.
+   - May 17 dense conversational private clip: **tied** (2.68 ≈ 2.68 at n=4; 3.10 ≈ 3.10 at n=2). Clean re-bench of an earlier contaminated run.
+   - May 17 LibriVox studio narrator: **Metal wins** (1.70 vs 1.91 at n=4, Metal 11 % faster). Clean system. Public-domain reproducible clip.
 
-   So "CPU beats Metal on Intel" doesn't generalize. Possible explanation: Whisper's effective token rate (and therefore parallelizable compute share) varies with speech rate and content density. Voice memo with pauses → short bursts → GPU launch overhead dominates → CPU wins. Continuous narrated audio → longer compute runs → GPU mat-mul advantage kicks in → Metal wins. Bench your own typical audio to know which regime you're in.
+   The earlier blog framing "CPU beats Metal on Intel" doesn't hold across all three runs. Two competing explanations: (a) **the April result was contaminated** and the real answer on this hardware is "Metal wins or ties" across regimes; or (b) **the result is genuinely audio-dependent** (voice memo with pauses → CPU; continuous narration → Metal). Distinguishing these requires another voice-memo-regime open clip benched in clean conditions — queued (FDR fireside chat candidate). Until then, treat the cross-regime comparison as open.
 3. **Wall-clock varies 3-4× with audio density.** Don't compare absolute numbers across audio sources. Compare arms-within-a-run.
 
 ### Why the absolute number varies
