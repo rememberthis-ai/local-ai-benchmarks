@@ -38,11 +38,13 @@ run_arm cpu_n2     -2  2
 run_arm cpu_n4     -2  4
 run_arm cpu_n6     -2  6
 run_arm cpu_n8     -2  8
+run_arm cpu_n10    -2 10
 run_arm metal_n1    0  1
 run_arm metal_n2    0  2
 run_arm metal_n4    0  4
 run_arm metal_n6    0  6
 run_arm metal_n8    0  8
+run_arm metal_n10   0 10
 
 echo ""
 echo "=== Summary (sec-per-audio-sec, lower is faster) ==="
