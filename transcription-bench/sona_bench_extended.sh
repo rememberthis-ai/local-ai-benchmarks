@@ -8,8 +8,9 @@
 # Reuses every helper from sona_bench.sh — only the arm list differs.
 # CSV/per-arm txt go to /tmp/sona_bench_extended.csv by default.
 #
-# Runtime: ~80 min on i9-8950HK with the 60 s holmes clip and
-# large-v3-turbo. Run on AC, plug in a coffee, walk away.
+# Runtime: ~25-30 min on i9-8950HK with the 60 s holmes clip and
+# large-v3-turbo (n=1 arms are the slow ones at ~4-5 min each).
+# On Apple Silicon expect substantially less. Run on AC.
 
 set -euo pipefail
 

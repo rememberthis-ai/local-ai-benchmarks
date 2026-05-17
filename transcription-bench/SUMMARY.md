@@ -47,18 +47,28 @@ On this clip, with a clean system, **CPU and Metal are tied at each thread count
 
 ### Clean-speech reference run on the canonical LibriVox clip (2026-05-17)
 
-`audio/holmes_clip60.wav` (committed in this repo, public domain — see `audio/README.md`).
+`audio/holmes_clip60.wav` (committed in this repo, public domain — see `audio/README.md`). Single audiobook narrator, clean studio recording, moderate pace. Clean system: no concurrent sona, no cargo/Xcode builds, AC + High Power.
 
 | Arm | Wall clock | Sec-per-audio-sec |
 |---|---:|---:|
-| *(numbers landing as bench finishes — replace this line)* | | |
+| **`metal_n4`** ★ | 101.87 s | **1.70** |
+| `cpu_n4` | 114.73 s | 1.91 |
+| `metal_n2` | 124.00 s | 2.07 |
+| `cpu_n2` | 134.58 s | 2.24 |
 
-This is the bench anyone can reproduce on their own hardware. The two runs above used a private personal recording; numbers there are only useful for *qualitative* comparison.
+**This is the bench anyone with the same hardware can reproduce.** And on this clip, Metal beats CPU at each thread count — opposite of the April voice memo result on the same machine. Same sona, same model, same system; only the audio differs.
+
+(Extended thread-sweep n=1/2/4/6/8 × {CPU, Metal} with `%cpu` sampling is a follow-up — see `sona_bench_extended.sh`.)
 
 ### What we know across all three runs
 
-1. **Contamination dominates.** A second sona process, a cargo build, or Xcode rebuilding in the background changes the answer by 30-45 % — bigger than the difference between any two arms. Always check `pgrep -fl sona`, `pgrep -fl cargo`, and Activity Monitor before claiming a result.
-2. **CPU vs Metal on Intel: depends on the audio.** The 2026-04-25 clean voice memo: CPU is 1.7× faster than the fastest Metal arm. The May 17 dense conversational audio (clean re-bench): CPU and Metal are *tied* at each thread count. So "CPU beats Metal on Intel" doesn't generalize — it's true for short bursts of clean speech, less true as audio density grows. The LibriVox clean-speech reference above should settle the comparison.
+1. **Contamination dominates everything else.** A second sona process, a cargo build, or Xcode rebuilding in the background changes the answer by 30-45 % — bigger than the difference between any two arms. Always check `pgrep -fl sona`, `pgrep -fl cargo`, and Activity Monitor before claiming a result.
+2. **CPU vs Metal on Intel: depends on the audio, not the hardware.** Three runs on the same i9-8950HK:
+   - April clean voice memo: **CPU wins** (1.35 vs 2.54, CPU 1.7× faster)
+   - May 17 dense conversational private clip: **tied** (2.68 ≈ 2.68 at n=4; 3.10 ≈ 3.10 at n=2)
+   - May 17 LibriVox studio narrator: **Metal wins** (1.70 vs 1.91 at n=4, Metal 11 % faster)
+
+   So "CPU beats Metal on Intel" doesn't generalize. Possible explanation: Whisper's effective token rate (and therefore parallelizable compute share) varies with speech rate and content density. Voice memo with pauses → short bursts → GPU launch overhead dominates → CPU wins. Continuous narrated audio → longer compute runs → GPU mat-mul advantage kicks in → Metal wins. Bench your own typical audio to know which regime you're in.
 3. **Wall-clock varies 3-4× with audio density.** Don't compare absolute numbers across audio sources. Compare arms-within-a-run.
 
 ### Why the absolute number varies
