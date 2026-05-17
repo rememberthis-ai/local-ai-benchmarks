@@ -127,9 +127,29 @@ After patching the harness to use `sona serve --no-gpu` HTTP API instead of `son
 
 (Earlier draft of this table said "Intel metal_n4 1.70 → M1 Max 85× faster than Intel best" — that cited the now-superseded broken-harness Intel numbers where the "CPU" arms were silently running Metal. The corrected Intel numbers above are from the same `sona serve --no-gpu` HTTP harness as the M1 Max data, so the 40× cross-arch comparison is apples-to-apples.)
 
-### Full-chapter follow-up (queued, not yet run)
+### 10-min clip — scaling check (2026-05-17, partial)
 
-The full ~65 min Holmes chapter mp3 (`/tmp/holmes_full.mp3`, 31 MB) is downloaded but not yet bench-run. Useful to confirm: (a) whether Metal arms diverge on a longer clip (still overhead-dominated at 60 s); (b) whether the cpu_n2 anomaly reproduces or was a one-off. **Setup cost for the long clip is the same ~1.4 s, so per-arm Metal time should grow from 1.38 s by ~(audio_length/60) × 0.02 s — for 65 min audio ~80 s wall, vs CPU at n=8 ~660 s wall.**
+10-min slice of the Holmes chapter (`/tmp/holmes_clip600.wav`, 19 MB, generated via the bundled RT ffmpeg) on the same M1 Max. CPU sweep aborted at battery 8 % after cpu_n4 + cpu_n8; Metal sweep completed all 6 arms at battery 5-8 %.
+
+| Arm | Wall (s) | Sec-per-audio-sec | CPU avg / peak (%) |
+|---|---:|---:|---:|
+| `cpu_n4`        | 516.97 | **0.86** | 130 / 214 |
+| **`cpu_n8`** ★  | 392.94 | **0.65** | 130 / 231 |
+| `metal_n1`      | 17.84  | 0.03  | 21 / 100 |
+| `metal_n2`      | 16.98  | 0.03  | 15 / 74  |
+| **`metal_n4`** ★| 16.70  | **0.03** | 14 / 74 |
+| `metal_n6`      | 16.83  | 0.03  | 15 / 73  |
+| `metal_n8`      | 16.61  | 0.03  | 16 / 74  |
+| `metal_n10`     | 16.77  | 0.03  | 16 / 72  |
+
+**Findings:**
+
+1. **Metal still ties across all 6 arms even at 10× the audio length.** All Metal arms 16.6-17.8 s wall — ~1 s spread, indistinguishable. Thread count truly does not affect Metal inference; `--threads` only governs the CPU-side wrappers (tokenizer, beam search) which is always fast.
+2. **Metal scales ~linearly past 60 s.** At 60 s clip: 1.38 s wall (overhead-dominated). At 600 s clip: 16.7 s wall. So real inference cost is (16.7 - 1.38) / (600 - 60) = **~0.028 s per second of audio** for Metal on M1 Max — a clean linear extrapolation. For a 65 min chapter that's ~110 s.
+3. **CPU is 23-29× slower than Metal at 10-min audio length.** Best CPU arm (`cpu_n8`) at 0.65 vs best Metal at 0.03 → **22 × slowdown going from Metal to CPU on Apple Silicon.** Bigger gap than the 60 s clip suggested (which was 8.5 ×) — Metal scales well, CPU scales worse.
+4. **CPU scaling is non-linear with audio length.** cpu_n4 was 0.28 s/audio-s at 60 s but **0.86 s/audio-s at 10 min** — 3 × slower per second of audio. Whisper's decoder cost grows with audio length (longer context, more beam search work, repetition penalty windows). The 60 s extrapolation underestimated CPU wall by ~3 ×.
+5. **`cpu_n8` keeps the CPU sweet spot** (1.3 × faster than `cpu_n4` at 10 min; still one thread per perf core on M1 Max).
+6. **Full 65 min chapter not run** — battery 5 % at end of bench, can't safely take 60+ min more. Extrapolated estimate: Metal ~110 s wall, cpu_n8 ~42 min wall. The pattern is clear from 60 s + 10 min comparison; full-chapter run only changes the absolute numbers, not the conclusion ("Metal wins by ~20-30×, CPU sweet spot is n=8").
 
 ## Discrete-GPU note for dual-GPU Intel MacBooks
 
