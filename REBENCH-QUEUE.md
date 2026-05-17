@@ -4,6 +4,10 @@ After the May 2026 "Local AI on Mac" blog post landed, several measurement gaps 
 
 Run order is rough priority — highest-value first. Numbers under "Effort" are rough wall-clock estimates on M1 Max / 64 GB in clean conditions.
 
+**Progress update 2026-05-16 late evening session** (2 % battery, apples-to-apples runtime A/B):
+- ✅ **ollama vs SwiftLM A/B on Llama-3.2-3B (M1 Max).** Ten minutes apart, same model, same hardware, both with `pmset powermode=2`. **ollama beats SwiftLM at every context point** measured: 4K +65 %, 8K +83 %, 16K +185 %, 32K +33 %. The blog's "SwiftLM beats ollama" framing was based on Qwen3-Coder-30B (MoE). For small dense Llama-3.2-3B, ollama wins clearly. Runtime preference is **model-class-dependent** — not a clean "SwiftLM > ollama" win. Partial close of item #1 below.
+- ⚠️ **Hidden battery throttle at < 5 %** uncovered in the same session. SwiftLM Llama-3.2-3B in the morning (clean, full battery) hit 54 tok/s @ 4K. In the evening at 2 % battery with `pmset powermode=2` still reading 2: **18.8 tok/s @ 4K**. The 32K row collapsed from 8 → 0.4 tok/s. Means **all previously-published "clean" M1 Max SwiftLM numbers need a `battery > 5 %` qualifier** — macOS appears to enforce a kernel-level GPU throttle below ~5 % battery regardless of user-set Power Mode. The May-8 Low-Power-Mode-taint (5–6× slow) is now revealed to be the *upper bound* of a wider silent-throttling spectrum.
+
 **Progress update 2026-05-16 evening session** (4 % battery, ran what would fit):
 - ✅ `Qwen3-8B-4bit` (thinking) — 4K=37, 8K=30, 16K=22 tok/s; 32K errors with RemoteDisconnected (same failure mode as Qwen3-4B; SwiftLM closes the connection past 16K in thinking mode).
 - 🟡 `gpt-oss-20b-MXFP4-Q4` — 4K=26 tok/s only. SwiftLM **segfaulted** at 8K (`Segmentation fault: 11`); 16K-64K all `ConnectionRefused`. Needs an isolated re-bench, not part of the bulk script.
@@ -16,9 +20,11 @@ Run order is rough priority — highest-value first. Numbers under "Effort" are 
 - `bench-chain-silicon.sh` preflight rejected hosts in High Power Mode because it only awk'd for the legacy `lowpowermode` key (absent on systems where the user hasn't toggled LPM). Fixed in main-repo commit `adf85e76`: now also reads the newer `powermode` key (0=normal, 1=low, 2=high) and treats absence as "not in LPM". Same commit makes the script prefer `hf` over the deprecated `huggingface-cli`.
 - SwiftLM appears to drop the TCP connection rather than return an error response when a thinking-mode model can't fit a 32K prompt — `Qwen3-4B` and `Qwen3-8B` both fail with `RemoteDisconnected` at 32K, not an HTTP 400. Worth investigating whether this is a config issue (KV cache size?) or a SwiftLM bug.
 
-## 1. ollama context-sweep at 4K / 8K / 16K / 32K / 48K / 64K
+## 1. ollama context-sweep at 4K / 8K / 16K / 32K / 48K / 64K — partially closed
 
-**Why**: The blog claims "SwiftLM beats ollama on the short-context A/B." That A/B was ~500-token input only. We never ran ollama at higher contexts, so the claim "SwiftLM wins at long context" isn't supported by data — it could be true, false, or flip at some context size. We currently can't tell.
+**Status (2026-05-16)**: Llama-3.2-3B A/B done — ollama beats SwiftLM 5–26× at every ctx point. Remaining work is the MoE/large-dense classes where the runtime preference may flip.
+
+**Why**: The blog claims "SwiftLM beats ollama on the short-context A/B." That A/B was ~500-token input only and used MoE models (Qwen3-Coder-30B, gpt-oss-20b, Gemma-4-26B-A4B, Qwen3.6-35B-A3B). Llama-3.2-3B (small dense) now shows the opposite: ollama wins clearly. Runtime preference looks **model-class-dependent** — small dense → ollama, large MoE → SwiftLM (probably; the MoE A/B at long context is the missing piece).
 
 **What to run**: The same five MoE models we already swept with SwiftLM, but through ollama's API instead:
 
@@ -28,11 +34,13 @@ Run order is rough priority — highest-value first. Numbers under "Effort" are 
 - `qwen3:35b` for Qwen3.6-35B-A3B (verify the tag)
 - `qwen3:80b` for Qwen3-Next-80B (no ollama tag last time we checked; skip if still missing)
 
+Also: `gemma4:e2b` via ollama-on-M1-Max — already on the cross-arch comparison wishlist; the model is 7.2 GB and not cached on the test M1 Max yet.
+
 **Method**: Mirror `swiftlm/ctx_sweep.py` but use ollama's `/api/generate` with `keep_alive: 0` between context points. Same Dreamer prompt slicing. Record `eval_count / eval_duration` from each response for ollama's internal decode rate.
 
-**Effort**: ~6–8 hours unattended on M1 Max.
+**Effort**: ~6–8 hours unattended on M1 Max (was the original estimate; minus ~1 hr for Llama-3.2-3B which is already done).
 
-**Blocked claim**: "SwiftLM beats ollama at long context" — currently unverified.
+**Blocked claim**: "SwiftLM beats ollama at long context" — partially refuted for small dense models (Llama-3.2-3B); still unverified for MoE.
 
 ## 2. Apple Silicon LLM ctx-sweep re-bench (clean conditions) — pending models
 
@@ -147,6 +155,18 @@ when a second sona is competing for cores.
 **Blocked claim**: The Audio Transcription row in the blog matrix has Apple Silicon
 listed as "pending". Filling that in lets the Audio Transcription section drop the
 "M1 Max number pending" caveat and present a clean two-row comparison.
+
+## 8. Document the < 5 % battery silent throttle (new gotcha)
+
+**Why**: 2026-05-16 late-evening session uncovered that M1 Max silently throttles GPU clocks below ~5 % battery *even when `pmset powermode=2` reads 2 (High Power)*. Same SwiftLM run on same hardware: 54 → 18.8 tok/s @ 4K, 8 → 0.4 tok/s @ 32K — purely from battery dropping below 5 %. The existing `gotchas/low-power-mode-throttling.md` only covers the explicit-LPM case (5–6× slowdown). This is a separate sub-5%-battery silent throttle of roughly 3× at low ctx, growing at high ctx.
+
+**What to do**: Add `gotchas/sub-5pct-battery-throttle.md` with the timestamped morning vs evening A/B numbers from 2026-05-16. Cross-link from `gotchas/low-power-mode-throttling.md`. Cite in any future SwiftLM bench summary that doesn't include a `battery > 5 %` qualifier.
+
+**Method**: Documentation only — the data is already captured in `experiments/swiftlm/results-vlm-phase2/SUMMARY.md` (apples-to-apples follow-up section).
+
+**Effort**: ~20 minutes.
+
+**Blocked claim**: All SwiftLM "clean" numbers in the blog matrix carry an implicit "battery > 5 %" caveat. The gotcha lets the matrix qualifier link out instead of inlining a paragraph.
 
 ## Bonus: power-mode-aware product settings (Remember This + My Transcriber)
 
