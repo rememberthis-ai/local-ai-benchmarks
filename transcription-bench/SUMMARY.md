@@ -67,9 +67,37 @@ Whisper's decoder generates one token at a time and the number of tokens scales 
 
 The April **clean voice memo** is closer to the typical Remember This workload (a personal voice memo dictated by one speaker). The May 17 dense audio is closer to what someone would feed My Transcriber for meeting transcription — useful as the "worst-case under typical use" number. The LibriVox clip is studio-narrator-clean — close to the voice memo regime but reproducible on any machine.
 
-## Apple Silicon (M1 Max / 64 GB) — pending
+## Apple Silicon (M1 Max / 64 GB) — first pass: 60 s clip too short
 
-See `../REBENCH-QUEUE.md` item #7 for the spec. Use the same `audio/holmes_clip60.wav` clip so numbers compare apples-to-apples with the Intel rows above. Expected to favor Metal heavily (unified memory removes the dGPU bus bottleneck), but the Intel result re-bench above shows we shouldn't assume — measure first.
+**Setup**: macOS Power Mode = High (powermode=2). Battery 20 %, on battery (laptop's normal AC charger was elsewhere — caveat noted but the bench is not GPU-throttled at this %). No concurrent sona, RT/MT GUI apps not running. 12-arm extended sweep against `audio/holmes_clip60.wav`.
+
+### 60 s clip — all 12 arms tied (2026-05-17)
+
+| Arm | Wall (s) | Sec-per-audio-sec | CPU avg / peak (%) |
+|---|---:|---:|---:|
+| `cpu_n1`     | 1.91 | 0.03 | 11 / 23 |
+| `cpu_n2`     | 1.87 | 0.03 | 10 / 20 |
+| `cpu_n4`     | 1.84 | 0.03 | 9 / 17 |
+| `cpu_n6`     | 1.84 | 0.03 | 12 / 23 |
+| `cpu_n8`     | 1.82 | 0.03 | 10 / 21 |
+| `cpu_n10`    | 1.82 | 0.03 | 8 / 17 |
+| `metal_n1`   | 1.90 | 0.03 | 11 / 22 |
+| `metal_n2`   | 1.85 | 0.03 | 9 / 18 |
+| `metal_n4`   | 1.82 | 0.03 | 11 / 23 |
+| `metal_n6`   | 1.82 | 0.03 | 10 / 21 |
+| `metal_n8`   | 1.81 | 0.03 | 8 / 16 |
+| `metal_n10`  | 1.83 | 0.03 | 11 / 22 |
+
+**Findings:**
+
+1. **60 s is below the M1 Max bench's resolution.** Every arm lands in 1.81–1.91 s (~5 % spread, well within noise). The bench is dominated by ~1.8 s of fixed model-load + whisper init; inference itself is < 200 ms.
+2. **CPU usage 8–12 % across all arms** — even `cpu_n10` (all-cores CPU-only) barely warms a single core's worth of cycles. This further confirms inference isn't the bottleneck at this audio length.
+3. **Cross-arch**: Intel CPU `cpu_n2` clean voice memo (April) = 1.35 s/audio-s. M1 Max = 0.03 s/audio-s on the same clip class. **~45 × speedup.** That's the real story for the matrix.
+4. **CPU vs Metal on Apple Silicon** can't be distinguished from this clip. Longer audio is needed to see the curve.
+
+### Full-chapter follow-up (in progress)
+
+Re-running against the full ~65 min Holmes chapter mp3 so per-arm inference time dominates over fixed setup overhead. Numbers landing as bench finishes — will replace this paragraph with the table.
 
 ## Discrete-GPU note for dual-GPU Intel MacBooks
 
