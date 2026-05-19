@@ -54,6 +54,8 @@ If you see `lowpowermode 1` or `Battery Power`, the numbers are not comparable t
 
 For bench reproducibility, always log the result of `pmset -g | grep -E 'lowpowermode|Power Mode'` alongside the numbers.
 
+**See also: [sub-5pct-battery-throttle.md](sub-5pct-battery-throttle.md)** — a *separate* macOS throttle that fires below ~5% battery even with High Power Mode forced. The two are independent and additive.
+
 ## Why this matters for blog matrices
 
 Every published benchmark claiming Apple Silicon throughput needs to disclose Power Mode + AC vs battery. Most don't. If a benchmark says "16.3 s/photo on M1 Max for Gemma-4-26B" and you re-run on AC + High Power and see 2.6 s, the original wasn't lying — they just didn't know.
