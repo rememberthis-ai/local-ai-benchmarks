@@ -202,6 +202,29 @@ battery 16 → 11 % across both arms (stayed above the throttle).
    text), so the speed number reflects real successful transcription, not an
    early abort.
 
+### Regime control — FDR conversational clip (2026-05-23)
+
+To answer the open question "is the M1 Max Metal number audio-regime-dependent?"
+(flagged in *Why the absolute number varies across audio* above), the full 10:56
+FDR Fireside Chat #14 (656.3 s, slow 1939 conversational broadcast with pauses —
+a different regime from the clean Holmes audiobook) was run Metal-only on the same
+M1 Max, same clean conditions, battery 11 % (above the throttle).
+
+| Arm | Wall (s) | Sec-per-audio-sec | Real-time factor |
+|---|---:|---:|---:|
+| `metal_n2` | 18.05 | 0.0275 | 36× |
+| `metal_n4` | 17.78 | 0.0271 | 37× |
+
+**Finding: the M1 Max Metal number is NOT meaningfully audio-regime-dependent.**
+FDR (conversational, 0.027 s/audio-s) is within ~10 % of Holmes (audiobook, 0.030
+s/audio-s) — and marginally *faster*, consistent with conversational speech having
+more pauses → fewer tokens per second of audio → less decoder work. This is the
+opposite of the Intel story, where the CPU-vs-Metal *winner* flipped with audio
+content. On Apple Silicon Metal, wall time is dominated by audio length, not
+content density: budget **~0.03 s per second of audio** for any clean single-speaker
+speech, audiobook or conversational. (Transcript verified valid — correct FDR
+opening.)
+
 ## Discrete-GPU note for dual-GPU Intel MacBooks
 
 On the i9-8950HK MacBook Pro 15-inch tested here, `--gpu-device 0|1|2|-1` all land on the **AMD Radeon Pro 560X (Polaris)**. macOS does not expose the Intel UHD 630 iGPU as a separate Metal device when a dGPU is present, even though the system has both physically installed. So "Metal" on this machine means "discrete Polaris GPU." The blog post's framing matches this: when we say "Metal on Intel" we mean the discrete GPU on machines that have one.
