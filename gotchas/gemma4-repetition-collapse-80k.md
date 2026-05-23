@@ -23,6 +23,17 @@ It's not "thinking out loud and never converging" — it's structurally collapse
 
 We didn't sweep alternate sampling configurations. `repeat_penalty=1.2` or similar might fix the collapse — try it if you're invested in Gemma 4 for long context. We picked Qwen3.6 instead and moved on.
 
+## The threshold is ≤64 K, not just 80 K (2026-05-23)
+
+A targeted re-run sliced the Dreamer prompt to exactly **64 K** (63,150 prompt tokens) and read the full SwiftLM output. Same collapse:
+
+```
+Based on the data provided, here are[true] own own own own … own own way own
+way own way … way way way way way way way way way way way way …
+```
+
+600 completion tokens, longest repeated 4-gram run = **319** (i.e. the entire output is one loop after a 7-token preamble). So the collapse is not an 80 K-only artifact — it's already total at 64 K. **Any context-sweep speed number for Gemma-4-26B at 64 K (e.g. the matrix's "0.8 tok/s @ 64 K") is measuring the decode rate of garbage, not usable output.** The practical coherent-output ceiling for this model on default sampling is somewhere below 64 K; we have coherent 32 K output, so the cliff is in the 32–64 K band.
+
 ## Why Qwen3.6 doesn't collapse here
 
 Qwen3.6-35B-A3B with `--thinking` produces real, on-topic analysis at the same 80 K length. Its interleaved sliding-window attention seems to hold up where Gemma 4's interleaved-local-global pattern doesn't, at least on default sampling. We didn't isolate the root cause, but the empirical difference was reproducible across three runs.
