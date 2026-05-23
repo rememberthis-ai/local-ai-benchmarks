@@ -169,7 +169,38 @@ Apple Silicon flips both the answer ("use Metal" vs "use CPU") AND wins the abso
 3. **CPU is 23-29× slower than Metal at 10-min audio length.** Best CPU arm (`cpu_n8`) at 0.65 vs best Metal at 0.03 → **22 × slowdown going from Metal to CPU on Apple Silicon.** Bigger gap than the 60 s clip suggested (which was 8.5 ×) — Metal scales well, CPU scales worse.
 4. **CPU scaling is non-linear with audio length.** cpu_n4 was 0.28 s/audio-s at 60 s but **0.86 s/audio-s at 10 min** — 3 × slower per second of audio. Whisper's decoder cost grows with audio length (longer context, more beam search work, repetition penalty windows). The 60 s extrapolation underestimated CPU wall by ~3 ×.
 5. **`cpu_n8` keeps the CPU sweet spot** (1.3 × faster than `cpu_n4` at 10 min; still one thread per perf core on M1 Max).
-6. **Full 65 min chapter not run** — battery 5 % at end of bench, can't safely take 60+ min more. Extrapolated estimate: Metal ~110 s wall, cpu_n8 ~42 min wall. The pattern is clear from 60 s + 10 min comparison; full-chapter run only changes the absolute numbers, not the conclusion ("Metal wins by ~20-30×, CPU sweet spot is n=8").
+6. **Full 65 min chapter Metal arms now run (2026-05-23, see section below).** The extrapolated Metal estimate (~110 s) landed within 8 % of the actual 117.9 s — confirming linear Metal scaling. CPU arms still skipped at chapter length (would be ~42 min/arm and battery-throttle-tainted); the 10-min CPU numbers stand as the CPU reference.
+
+### Full 65-min chapter — Metal arms (2026-05-23) ✅ closes item #7
+
+The complete `adventureholmes_01_doyle_64kb.mp3` chapter (65:06 = 3906.6 s),
+converted to 16 kHz mono WAV via the bundled MT ffmpeg. Metal arms only — CPU
+would be ~42 min/arm (per the 10-min extrapolation) and would cross the 5 %
+battery throttle. Clean system (MT/RT quit, no sona contention), powermode 2,
+battery 16 → 11 % across both arms (stayed above the throttle).
+
+| Arm | Wall (s) | Sec-per-audio-sec | Real-time factor | CPU avg / peak (%) |
+|---|---:|---:|---:|---:|
+| `metal_n2` | 117.92 | 0.0302 | **33×** | 17 / 200 |
+| `metal_n4` | 115.66 | 0.0296 | **34×** | 15 / 334 |
+
+**Findings:**
+
+1. **The linear-Metal extrapolation was right.** The 10-min run predicted ~110 s
+   wall for the full chapter (0.028 s/audio-s × 3906 s = 109 s). Actual: 117.9 s
+   (0.030 s/audio-s). Within 8 % — Metal inference cost on M1 Max is genuinely
+   linear in audio length, no degradation cliff out to 65 min.
+2. **Thread count still doesn't matter on Metal.** n=4 vs n=2 differ by 2.3 s
+   over a ~2-min run (2 %) — same tie as the 60 s and 10-min clips. `--threads`
+   only governs the CPU-side tokenizer/beam-search wrappers.
+3. **33-34× real-time on a 65-min file.** A full hour of clean speech transcribes
+   in under 2 minutes on M1 Max Metal. This is the headline Apple Silicon number
+   the matrix was missing — Intel best (`cpu_n4`) is ~1 s/audio-s, so M1 Max Metal
+   is **~32× faster than Intel best** at chapter length, and the gap is stable
+   (doesn't shrink the way it might if Metal had a long-audio penalty).
+4. **Transcript verified valid** end-to-end (correct LibriVox intro + chapter
+   text), so the speed number reflects real successful transcription, not an
+   early abort.
 
 ## Discrete-GPU note for dual-GPU Intel MacBooks
 
