@@ -1,6 +1,25 @@
-# Re-bench queue — open work as of 2026-05-17
+# Re-bench queue — status as of 2026-07-03
 
-After the May 2026 "Local AI on Mac" blog post landed, several measurement gaps remained. Each entry below is a bench that, if run, would close a specific claim in the post (or fix a known wrong/missing data point).
+After the May 2026 "Local AI on Mac" blog post landed, several measurement gaps remained. Each entry below is a bench that, if run, would close a specific claim in the post (or fix a known wrong/missing data point). The post itself has already shipped — this queue now mostly informs a **follow-up post**.
+
+**Status summary** (all detailed numbers live in `experiments/swiftlm/results-vlm-phase2/SUMMARY.md` and `experiments/transcription-bench/SUMMARY.md` in the private monorepo):
+
+| # | Item | Status |
+|---|---|---|
+| 1 | ollama context-sweep, MoE models | ✅ **Closed** 2026-05-19/23 — all 5 MoE classes have complete cross-runtime tables. ollama wins at every ctx point except Qwen3.6-35B short-ctx. |
+| 2 | Apple Silicon LLM ctx-sweep re-bench | ✅ **Closed** 2026-05-19/23/24 — all 7 candidate models benched, including Qwen3-Next-80B (first successful run, 2026-05-24). |
+| 3 | Gemma-4-26B coherence @ 64K | ✅ **Closed** 2026-05-23 — confirmed repetition collapse at 64K (not just 80K). |
+| 4 | M1 Max VLM caption-quality side-by-side | ✅ **Closed** 2026-05-19 — see `experiments/captioning-bench/QUALITY-SCORES.md`. Qwen3-VL-8B wins; e4b/e2b Gemma and 2B/3B Qwen excluded from production. |
+| 5 | Claude Code-driven Dreamer real-task bench | ⬜ **Still open** — new harness, half-day+ effort. Lower priority now that RT v0.11 routes the LLM tier through `claude-code-router` rather than a bundled local runtime (see below). |
+| 6 | Transcription bench (MT blog post) | ⬜ **Still open** — MT-specific writeup; Apple Silicon + Intel data both exist (item 7), just needs the MT-framed post. |
+| 7 | Apple Silicon transcription bench | ✅ **Closed** 2026-05-23 — full 65-min Holmes chapter (33-34× real-time) + FDR regime-control clip confirms Metal speed is not audio-content-dependent. |
+| 8 | Sub-5% battery throttle gotcha | ✅ **Closed** 2026-05-19 — `gotchas/sub-5pct-battery-throttle.md`. |
+
+**Product context that changed mid-queue**: RT v0.11 shipped SwiftLM as the default **VLM captioning** backend only (2026-05-26 smoke test, see `docs/ongoing/SWIFTLM-BUNDLING-2026-05-24.md`) — exactly matching item 4's finding. The LLM/Dreamer tier was **descoped from SwiftLM** and routes through `claude-code-router` instead, directly because of item 1/2's finding that ollama beats SwiftLM by 3-45× at every model class and context size except one narrow case. So items 1-3 are now historical/documentation value rather than live product-blocking — still worth citing in a follow-up post as "here's the data that shaped the v0.11 architecture decision."
+
+**New gotcha found while closing item 2 (Qwen3-Next-80B, 2026-05-24)**: SwiftLM's first real request after a cold model load runs 3×+ slower than steady-state (Metal JIT kernel compilation, not a throttle) — and a trivial warmup ping doesn't fully absorb it, only a full-size warmup request does. See `gotchas/swiftlm-cold-start-ramp-up.md`. This likely means **every existing 4K-context ctx-sweep row in this repo is a mix of cold-start tax and genuine short-context speed** — worth keeping in mind when citing any "4K tok/s" number. `ctx_sweep.py` now fires a full-size unrecorded warmup request by default (`--no-warmup` to disable) so future sweeps don't have this problem.
+
+**Environment note (2026-07-03)**: after a hardware repair, the bench Mac's ollama model store and HF/MLX cache are both empty — everything cached for this queue (~150-200 GB across ollama + mlx-community weights) needs re-pulling before any *new* bench can run. Doc/analysis work above needed no re-download since the raw result files from each session were already captured to disk.
 
 Run order is rough priority — highest-value first. Numbers under "Effort" are rough wall-clock estimates on M1 Max / 64 GB in clean conditions.
 
