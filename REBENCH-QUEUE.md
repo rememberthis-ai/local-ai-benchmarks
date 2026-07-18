@@ -19,7 +19,39 @@ After the May 2026 "Local AI on Mac" blog post landed, several measurement gaps 
 
 **New gotcha found while closing item 2 (Qwen3-Next-80B, 2026-05-24)**: SwiftLM's first real request after a cold model load runs 3×+ slower than steady-state (Metal JIT kernel compilation, not a throttle) — and a trivial warmup ping doesn't fully absorb it, only a full-size warmup request does. See `gotchas/swiftlm-cold-start-ramp-up.md`. This likely means **every existing 4K-context ctx-sweep row in this repo is a mix of cold-start tax and genuine short-context speed** — worth keeping in mind when citing any "4K tok/s" number. `ctx_sweep.py` now fires a full-size unrecorded warmup request by default (`--no-warmup` to disable) so future sweeps don't have this problem.
 
-**Environment note (2026-07-03)**: after a hardware repair, the bench Mac's ollama model store and HF/MLX cache are both empty — everything cached for this queue (~150-200 GB across ollama + mlx-community weights) needs re-pulling before any *new* bench can run. Doc/analysis work above needed no re-download since the raw result files from each session were already captured to disk.
+**Environment note (2026-07-03)**: after a hardware repair, the bench Mac's ollama model store and HF/MLX cache are both empty — everything cached for this queue (~150-200 GB across ollama + mlx-community weights) needs re-pulling before any *local* re-bench can run. Doc/analysis work above needed no re-download since the raw result files from each session were already captured to disk.
+
+## 9. New: local vs ollama-cloud comparison — a fresh angle for the follow-up post
+
+**Why**: found while scoping the post-repair re-provisioning (item above). ollama's
+`:cloud`-suffixed tags (`gemma4:31b-cloud`, `kimi-k2.6:cloud`, likely others) proxy
+to hosted inference through the exact same `ollama` CLI/API — pull is a few hundred
+bytes (no local weights), and a request round-trips through ollama's servers. This
+is a genuinely different axis from anything else in this repo: local-quality-vs-speed
+tradeoffs on Apple Silicon vs. "just proxy to the cloud, pay per token, leave the
+device." Full writeup: `experiments/swiftlm/results-vlm-phase2/SUMMARY.md` → "New
+axis: local vs ollama-cloud".
+
+**Status**: 🟡 **Started** 2026-07-03 — two models, two prompt sizes each, both land
+~75-96 tok/s e2e (network+remote), roughly flat regardless of model size or prompt
+length (proxy/network-bound, not compute-bound). Beats or matches the fastest local
+ollama numbers in this repo. Surfaced and fixed a real bug in
+`ctx_sweep_ollama.py` — missing `eval_duration`/`prompt_eval_duration` fields in
+cloud responses previously defaulted to a 1ns divisor, producing garbage
+astronomical tok/s numbers instead of a safe zero; script now reports true e2e
+tok/s for both local and cloud responses.
+
+**What's left**: broader model coverage (whatever other `:cloud` tags exist),
+quality comparison (does cloud produce meaningfully different output than the
+equivalent local weights?), and the actual point of a follow-up post — a clear
+tradeoff table (speed / cost / privacy / offline-capability) rather than just a
+speed number.
+
+**Effort**: ~30 min more for broader coverage; the tradeoff-table writing is
+editorial, not benching.
+
+**Blocked content**: the follow-up post's most novel section — nothing else in
+the existing matrix covers cloud at all.
 
 Run order is rough priority — highest-value first. Numbers under "Effort" are rough wall-clock estimates on M1 Max / 64 GB in clean conditions.
 
