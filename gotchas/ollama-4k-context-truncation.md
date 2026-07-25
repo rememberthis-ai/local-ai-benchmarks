@@ -90,20 +90,19 @@ single-image caption uses ~17 % of the 4 K window. The clamp is a real ceiling
 `prompt_eval_count` distinguishes "theoretically constrained" from "actually
 truncated" in one request. Use it before filing the bug.
 
-## Correction to the earlier version of this note
+## Don't trust a code comment that says it's handled
 
-It used to close by saying `num_ctx=40000` was "baked into the v0.11 ollama
-bridge for every Dreamer-class call". That is **not true of the current tree** —
-`num_ctx` appears nowhere in `core/`, `core-lib/`, `daemon/` or `macos-app/`,
-only in the bench scripts under `experiments/`. Nothing in the shipping product
-sets it.
+An earlier version of this note asserted that a safe `num_ctx` was "baked into
+the ollama bridge for every Dreamer-class call". When we went looking, that
+wasn't true any more — the override lived only in the bench scripts, not on the
+path that mattered.
 
-That turns out to be fine rather than alarming, for two independently measured
-reasons: the Dreamer's ollama path reaches the model through
-`ollama launch claude` → Claude Code → `/v1/messages`, which allocated the full
-262,144 for `qwen3.6:35b`; and the VLM path's 4 K clamp has ~6× headroom on a
-single image. But it was true by accident, not by design — which is exactly why
-the diagnostic (`/api/ps`, `prompt_eval_count`) beats trusting a code comment.
+It happened to be harmless, for two separately measured reasons (the agent path
+allocated the full 262,144, and the vision path's 4 K clamp has ~6× headroom on
+a single image). But harmless *by accident* is not the same as handled, which is
+the whole argument for checking `/api/ps` and `prompt_eval_count` at the time
+you care rather than trusting a claim written months earlier — including one in
+this file.
 
 ## SwiftLM does not have this failure mode
 

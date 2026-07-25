@@ -10,7 +10,6 @@ Lessons from running the bench harness across two machines for two weeks. Each f
 | [`agentic-session-completion-signals.md`](agentic-session-completion-signals.md) | Benchmarking a multi-turn agent: process-exit, the app's own sentinel, and output mtime all mislead — watch transcript quiescence instead |
 | [`keep-alive-eviction.md`](keep-alive-eviction.md) | ollama's default 5-minute `keep_alive` makes back-to-back runtime A/Bs lie by ~3× |
 | [`ollama-4k-context-truncation.md`](ollama-4k-context-truncation.md) | The 4 K silent-truncation trap is real but no longer a global default — it's per-model now, and our own writeup had it wrong |
-| [`local-agent-backend-never-launched.md`](local-agent-backend-never-launched.md) | Our local agent backend errored on an unknown flag and never started — single-shot HTTP benchmarks can't see the launcher at all |
 | [`gemma4-repetition-collapse-80k.md`](gemma4-repetition-collapse-80k.md) | Gemma-4-26B-A4B emits 6,000 chars of `own own own way way way` at 80 K context |
 | [`turboquant-slower-than-vanilla.md`](turboquant-slower-than-vanilla.md) | SwiftLM's `--turbo-kv` (3-bit KV compression) is uniformly slower than vanilla on a 64 GB Mac |
 | [`polaris-gpu-dead-end.md`](polaris-gpu-dead-end.md) | AMD Radeon Pro 5xx on Intel Macs: tg is slower than CPU + Metal driver hangs |
