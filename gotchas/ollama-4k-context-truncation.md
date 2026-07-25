@@ -1,111 +1,100 @@
-# ollama's 4 K context truncation: still real, but no longer a global default
+# ollama's silent 4 K truncation — and why the old advice about it is wrong
 
-Easy trap, real UX consequences — and the *mechanism changed under us*, which
-made our own earlier writeup misleading. Both halves matter.
+Send ollama a prompt longer than its context window and it does not warn, does
+not error, and returns a confident answer based on the part it saw. We hit this
+with a 79,000-token prompt: the response looked fine, and `prompt_eval_count`
+came back **4,096**. The model never saw 84 % of the input, and answered as if
+the missing 84 % didn't exist.
 
-## The original trap
+In an app this looks like a user pasting a long document and getting a coherent
+reply that is uninformed about nearly all of it.
 
-We sent a 79,000-token prompt to ollama without overriding `num_ctx`. Ollama
-returned a response — no warning, no error. Inspecting `prompt_eval_count` in
-the response body: **4,096**. The model never saw 84 % of the prompt, and duly
-answered "no photos provided" because it never reached the photo section.
+## The part everyone gets wrong: it is per-model, not a global default
 
-In a chat app this looks like: user pastes a long document, gets a coherent
-reply that is confidently uninformed about most of what they pasted.
+The advice you'll find everywhere — including in the first version of this file —
+is *"ollama defaults `num_ctx` to 4 K regardless of model."* **That is no longer
+true**, and believing it leads to the wrong diagnosis.
 
-We almost shipped that as the Dreamer feature on Apple Silicon.
-
-## What changed: it is per-model now, not per-installation
-
-The old explanation — *"ollama defaults `num_ctx` to 4 K regardless of model"* —
-**is no longer true**, and repeating it leads you to the wrong diagnosis.
-
-Measured on bundled ollama **0.21.0** (client 0.22.1), two models on the same
-server, neither request passing `num_ctx`:
+Two models on the same server (ollama 0.21.0), neither request passing
+`num_ctx`:
 
 | Model | Declared context | Actually allocated |
 |---|---|---|
 | `qwen3.6:35b` | 262,144 | **262,144** ✅ |
 | `openbmb/minicpm-v4.5` | 40,960 | **4,096** ❌ |
 
-The difference is not the model size, the endpoint, or the ollama version. It
-is the **Modelfile**:
+Not the model size, not the endpoint, not the ollama version. The difference is
+the **Modelfile**:
 
-```
+```console
 $ ollama show --parameters qwen3.6:35b
-repeat_penalty 1 · temperature 1 · top_k 20 · top_p 0.95 …      # no num_ctx
+repeat_penalty 1 · temperature 1 · top_k 20 · top_p 0.95 …     # no num_ctx
 
 $ ollama show --parameters openbmb/minicpm-v4.5
-num_ctx        4096                                             # ← pinned
+num_ctx        4096                                            # ← pinned
 temperature    0.7 · top_p 0.9 · stop …
 ```
 
 Absent a `num_ctx` parameter, modern ollama sizes the window to the model's
-declared context (memory permitting). A Modelfile that *explicitly pins*
-`num_ctx 4096` still clamps you — and because 4096 was also the old global
-default, the symptom is byte-identical to the old bug while the cause is
-completely different.
+declared context, memory permitting. A Modelfile that *explicitly pins*
+`num_ctx 4096` still clamps you — and since 4096 was also the old global
+default, the symptom is byte-identical while the cause is completely different.
 
-So the trap has moved: it is now a property of **whichever model you pulled**,
-and community re-uploads are the ones most likely to carry a stale 4 K pin
-while advertising a large window in their model card. `openbmb/minicpm-v4.5`
+So the trap has moved: it's now a property of **whichever model you pulled**.
+Community re-uploads are the likeliest to carry a stale 4 K pin while
+advertising a large window in their model card — `openbmb/minicpm-v4.5`
 advertises 40 K and ships 4 K.
 
-The endpoint makes no difference — native `/api/generate` and the
-Anthropic-compatible `/v1/messages` both allocated 262,144 for `qwen3.6:35b`.
+The endpoint makes no difference: native `/api/generate` and the
+OpenAI/Anthropic-compatible endpoints all allocated 262,144 for `qwen3.6:35b`.
 
-## The fix, and the diagnostic
+## Checking, and fixing
 
-Advice is unchanged; the reason for it isn't. Pass `num_ctx` explicitly on any
-long-context request rather than trusting either the model card or the default:
+Pass `num_ctx` explicitly for anything long, rather than trusting the model card
+or the default:
 
 ```bash
-curl -s http://127.0.0.1:21434/api/generate -d '{
-  "model": "gemma4:e2b",
+curl -s http://localhost:11434/api/generate -d '{
+  "model": "your-model",
   "prompt": "...",
   "options": {"num_ctx": 40000}
 }'
 ```
 
-Two ways to check what you actually got:
+Two ways to see what you actually got:
 
-- **Per request** — every `/api/generate` response carries `prompt_eval_count`
-  (input tokens actually fed to the model). If your prompt is N tokens and
-  `prompt_eval_count` < N, you were truncated.
+- **Per request** — `prompt_eval_count` in the `/api/generate` response is the
+  number of input tokens actually fed to the model. Prompt is N tokens and
+  `prompt_eval_count` < N? You were truncated. Worth asserting in any harness.
 - **Per loaded model** — `GET /api/ps` reports `context_length` for each
-  resident model. This is the fastest way to answer "did this model get a real
-  window?" without crafting a long prompt, and it's what produced the table
-  above.
+  resident model. Fastest way to answer "did this model get a real window?"
+  without crafting a long prompt; it's what produced the table above.
 
-Check `ollama show --parameters <model>` before assuming a freshly pulled model
-behaves like the last one.
+```bash
+curl -s http://localhost:11434/api/ps | jq '.models[] | {name, context_length}'
+```
 
-## Corollary: a small window can be harmless — measure before alarming
+## A constrained window isn't automatically a truncated one
 
-We assumed a 4 K-clamped vision model must be truncating captions. It isn't: a
-2048 px JPEG costs **682 tokens** through `openbmb/minicpm-v4.5`, so a
-single-image caption uses ~17 % of the 4 K window. The clamp is a real ceiling
-(roughly six images, or one long OCR-text prompt) but not a live defect.
+Worth checking before raising the alarm, because we nearly got this wrong in the
+other direction: a 4 K-clamped *vision* model sounds obviously broken, but a
+2048 px JPEG costs about **682 tokens** through `openbmb/minicpm-v4.5`. A
+single-image prompt uses ~17 % of the window. Real ceiling, no actual
+truncation.
 
-`prompt_eval_count` distinguishes "theoretically constrained" from "actually
-truncated" in one request. Use it before filing the bug.
+`prompt_eval_count` is what separates "theoretically constrained" from "actually
+truncating" — measure before concluding.
 
-## Don't trust a code comment that says it's handled
+## Don't trust a claim written months ago, including this one
 
-An earlier version of this note asserted that a safe `num_ctx` was "baked into
-the ollama bridge for every Dreamer-class call". When we went looking, that
-wasn't true any more — the override lived only in the bench scripts, not on the
-path that mattered.
-
-It happened to be harmless, for two separately measured reasons (the agent path
-allocated the full 262,144, and the vision path's 4 K clamp has ~6× headroom on
-a single image). But harmless *by accident* is not the same as handled, which is
-the whole argument for checking `/api/ps` and `prompt_eval_count` at the time
-you care rather than trusting a claim written months earlier — including one in
-this file.
+The first version of this note asserted the 4 K behaviour was universal and that
+a safe `num_ctx` was already wired in downstream. Neither survived contact with
+`/api/ps`. Model defaults, ollama's sizing behaviour, and whatever your own code
+sets are all moving targets — check them at the point you care, rather than
+inheriting a conclusion.
 
 ## SwiftLM does not have this failure mode
 
-SwiftLM uses the model's full context by default — no `num_ctx` override, and
-you get an explicit error rather than silent truncation when you exceed the
+SwiftLM uses the model's full context by default — no `num_ctx` override needed,
+and you get an explicit error rather than silent truncation when you exceed the
 model's training window.
