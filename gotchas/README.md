@@ -7,6 +7,7 @@ Lessons from running the bench harness across two machines for two weeks. Each f
 | [`low-power-mode-throttling.md`](low-power-mode-throttling.md) | macOS Low Power Mode silently throttles M1 Max GPU by 5–6× — almost shipped wrong matrix numbers |
 | [`sub-5pct-battery-throttle.md`](sub-5pct-battery-throttle.md) | Separate throttle below ~5% battery, 3–20× slower depending on ctx, fires even in High Power Mode |
 | [`swiftlm-cold-start-ramp-up.md`](swiftlm-cold-start-ramp-up.md) | First real SwiftLM request after load is 3×+ slower than steady-state (Metal JIT compile) — a trivial warmup ping doesn't fully fix it |
+| [`agentic-session-completion-signals.md`](agentic-session-completion-signals.md) | Benchmarking a multi-turn agent: process-exit, the app's own sentinel, and output mtime all mislead — watch transcript quiescence instead |
 | [`keep-alive-eviction.md`](keep-alive-eviction.md) | ollama's default 5-minute `keep_alive` makes back-to-back runtime A/Bs lie by ~3× |
 | [`ollama-4k-context-truncation.md`](ollama-4k-context-truncation.md) | ollama silently truncates long prompts to 4 K by default — no warning, no error |
 | [`gemma4-repetition-collapse-80k.md`](gemma4-repetition-collapse-80k.md) | Gemma-4-26B-A4B emits 6,000 chars of `own own own way way way` at 80 K context |

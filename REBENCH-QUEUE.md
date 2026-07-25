@@ -10,7 +10,7 @@ After the May 2026 "Local AI on Mac" blog post landed, several measurement gaps 
 | 2 | Apple Silicon LLM ctx-sweep re-bench | ✅ **Closed** 2026-05-19/23/24 — all 7 candidate models benched, including Qwen3-Next-80B (first successful run, 2026-05-24). |
 | 3 | Gemma-4-26B coherence @ 64K | ✅ **Closed** 2026-05-23 — confirmed repetition collapse at 64K (not just 80K). |
 | 4 | M1 Max VLM caption-quality side-by-side | ✅ **Closed** 2026-05-19 — see `experiments/captioning-bench/QUALITY-SCORES.md`. Qwen3-VL-8B wins; e4b/e2b Gemma and 2B/3B Qwen excluded from production. |
-| 5 | Claude Code-driven Dreamer real-task bench | ⬜ **Still open** — new harness, half-day+ effort. Lower priority now that RT v0.11 routes the LLM tier through `claude-code-router` rather than a bundled local runtime (see below). |
+| 5 | Claude Code-driven Dreamer real-task bench | 🟡 **Harness built + hosted arm done** 2026-07-25. Answers the "how much context does a Dreamer session use?" open question: **opens at 34 K, peaks at 104 K, 53/53 turns above 32 K, 89 % cache reads.** Local (ollama) arm still pending. Harness `experiments/dreamer-bench/`; writeup `docs/ongoing/DREAMER-BENCH-2026-07-25.md` (private monorepo). |
 | 6 | Transcription bench (MT blog post) | ⬜ **Still open** — MT-specific writeup; Apple Silicon + Intel data both exist (item 7), just needs the MT-framed post. |
 | 7 | Apple Silicon transcription bench | ✅ **Closed** 2026-05-23 — full 65-min Holmes chapter (33-34× real-time) + FDR regime-control clip confirms Metal speed is not audio-content-dependent. |
 | 8 | Sub-5% battery throttle gotcha | ✅ **Closed** 2026-05-19 — `gotchas/sub-5pct-battery-throttle.md`. |
@@ -141,19 +141,33 @@ Also: `gemma4:e2b` via ollama-on-M1-Max — already on the cross-arch comparison
 
 **Why**: The blog says "We haven't yet measured how much context a typical Dreamer session actually consumes. 32 K might be plenty for the common case; 64 K might be the floor. Open question." This is the actual question the matrix's LLM column depends on.
 
-**What to run**: A new harness, not a re-bench of existing scripts. Steps:
+**Status 2026-07-25**: harness built (`experiments/dreamer-bench/` in the private monorepo), **hosted arm complete**, local arm pending.
 
-1. Run SwiftLM with one of the candidate LLMs (`Qwen3.6-35B-A3B-4bit` + `--thinking` is the obvious first try).
-2. Start Claude Code locally, point it at the SwiftLM endpoint (`OPENAI_API_BASE=http://127.0.0.1:5413/v1`, no API key needed).
-3. Fire 3–5 representative Dreamer tasks (e.g. "summarize this week's photos and voice memos into a journal entry").
-4. Capture: total context used by end of session, total tokens generated, total wall time, number of tool calls.
-5. Compare across LLM candidates if first one looks viable.
+**ANSWERED — the headline number.** A real `biography` Dreamer session against a 76-item synthetic vault (71 photos spanning 2014–2026):
 
-**Method**: Brand new. Probably 4–8 hours to set up the harness + run a few tasks + write up findings.
+| | |
+|---|---:|
+| Context at turn 1 | **33,707** |
+| Peak context | **104,579** |
+| Turns above 32 K | **53 / 53** |
+| Turns above 64 K | 37 / 53 |
+| Total input tokens | 4,230,565 (**89 % served from prompt cache**) |
+| Output tokens | 64,688 |
+| Wall time (hosted) | 293 s |
+| Tool calls | 35 |
 
-**Effort**: Half a day to a full day.
+So: **32 K was never enough — not for a single turn.** A session *opens* at ~34 K because the vault `CLAUDE.md` + MCP tool schemas + cadence prompt cost that much before any work happens. "64 K might be the floor" was the right instinct; the real ceiling is ~105 K, and it scales with corpus size (a 10-photo corpus peaked at 70 K; 71 photos peaked at 105 K).
 
-**Blocked claim**: The whole "LLM for Claude Code-driven Dreamer" section is hypothesis until this runs.
+**Two corrections to the original plan above:**
+
+1. ~~"point Claude Code at the SwiftLM endpoint"~~ — **does not work.** The `claude` CLI speaks the Anthropic Messages schema (`/v1/messages`); SwiftLM serves only OpenAI Chat Completions, so `ANTHROPIC_BASE_URL` at SwiftLM 404s. That's why `swiftlm_local` is hidden in RT's Settings. The only working local backend is `ollama launch claude --model X`. **SwiftLM cannot be an arm of this benchmark at all** until an Anthropic↔OpenAI translation proxy lands.
+2. ~~"fire 3–5 representative Dreamer tasks"~~ — cadence choice is constrained by fixture data. `weekly`/`narrative` target rollups that don't exist on the synthetic corpus (no time logs, empty `Notes/life/{days,weeks,months}/`). **`biography` is the only well-supported cadence**; `monthly` over 2026-06 is second best.
+
+**Why this matters beyond the number**: every other benchmark in this repo is single-shot — one request, one synthetic sliced prompt. A Dreamer session is agentic: 53 turns, self-directed MCP queries, context accumulating as it goes. **89 % of its input tokens were prompt-cache reads**, an optimization a local runtime doesn't get for free. Single-shot ctx-sweeps structurally cannot show any of that.
+
+**Remaining**: the local (`ollama qwen3.6:35b`) arm. Projected 59–128 min vs hosted's 4.9 — the spread depends on whether ollama's prefix cache survives 53 agentic turns. ⚠️ Check `num_ctx` first: peak context is 104 K, ollama's default is 4096 and it truncates silently (see `gotchas/ollama-4k-context-truncation.md`). A silently-truncated local run looks *fast* while producing a much worse biography.
+
+**Effort remaining**: 1–2 h unattended for the local arm + quality diff.
 
 ## 6. Transcription bench (My Transcriber blog post)
 
