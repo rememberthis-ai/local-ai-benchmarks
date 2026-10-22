@@ -4,10 +4,16 @@ Bench harnesses for the May 2026 local-AI matrix work. The contents of this dire
 
 - **Scripts + aggregate summary matrices** are mirrored to the public bench repo:
   [github.com/rememberthis-ai/local-ai-benchmarks](https://github.com/rememberthis-ai/local-ai-benchmarks).
-  This is what external readers of the blog post can reproduce.
+  This is what readers of the write-ups can reproduce.
 - **Per-photo result files, raw bench logs, and the real Dreamer-prompt** live only in this
   private monorepo. They contain personal names, OCR'd documents, and registry data and
   intentionally do not leave the org.
+
+## Write-ups
+
+The results are written up on Augmented Mind's local-AI research pages:
+[augmentedmind.io/research/local-ai](https://augmentedmind.io/research/local-ai/). The first is
+[Local LLM speed on a Mac: Apple Silicon vs Intel, tokens per second (May 2026)](https://augmentedmind.io/research/local-ai/local-llm-speed-mac-may-2026/).
 
 ## Single-entry chain (recommended)
 
