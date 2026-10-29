@@ -1,0 +1,43 @@
+{
+  "_note": "Fixed prompt set for the October 2026 local image/video bench. Synthetic subjects only, nothing personal. The same prompts go to the hosted models for the side-by-side.",
+  "images": [
+    {
+      "id": "portrait",
+      "prompt": "Close-up portrait of an elderly fisherman on a wooden pier, weathered skin, knitted wool cap, overcast soft light, shot on an 85mm lens, shallow depth of field, natural colours"
+    },
+    {
+      "id": "office",
+      "prompt": "A small Scandinavian home office at dusk, a laptop on an oak desk, a warm desk lamp, rain on the window, plants on the sill, photographed for an interior magazine"
+    },
+    {
+      "id": "chalkboard",
+      "prompt": "A cafe chalkboard sign leaning against a brick wall, hand-lettered in white chalk, it reads: Close the books, not the laptop"
+    },
+    {
+      "id": "friends",
+      "prompt": "Two friends laughing while sharing a pizza at a kitchen table, candid photo, natural window light, hands visible, slight motion blur"
+    },
+    {
+      "id": "harbour",
+      "prompt": "Helsinki harbour at blue hour in winter, a ferry with its lights on, reflections on icy water, light snow falling, wide shot"
+    },
+    {
+      "id": "robot",
+      "prompt": "Flat vector illustration of a friendly robot sorting paper receipts into labelled folders on a desk, muted pastel palette, clean shapes"
+    }
+  ],
+  "videos": [
+    {
+      "id": "barista",
+      "prompt": "A barista pours steamed milk into a cup of coffee, making a leaf pattern, close-up, warm cafe light, the hiss of the steam wand and quiet cafe chatter"
+    },
+    {
+      "id": "ferry",
+      "prompt": "A ferry pulls away from a snowy harbour at blue hour, slow dolly shot along the pier, gulls calling, the low rumble of the engine"
+    },
+    {
+      "id": "dog",
+      "prompt": "A golden retriever runs across a sunlit meadow toward the camera and jumps to catch a red ball, slow motion, birdsong"
+    }
+  ]
+}

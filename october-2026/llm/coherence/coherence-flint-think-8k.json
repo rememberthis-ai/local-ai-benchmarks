@@ -1,0 +1,26 @@
+[
+ {
+  "model": "flint:40b",
+  "target": 64000,
+  "num_ctx": 72000,
+  "prompt_tokens": 62248,
+  "answer_tokens": 8000,
+  "answer_chars": 0,
+  "thinking_chars": 37659,
+  "done_reason": "length",
+  "longest_4gram_run": null,
+  "distinct_ratio": null
+ },
+ {
+  "model": "flint:40b",
+  "target": 200000,
+  "num_ctx": 215000,
+  "prompt_tokens": 191678,
+  "answer_tokens": 6385,
+  "answer_chars": 3185,
+  "thinking_chars": 21862,
+  "done_reason": "stop",
+  "longest_4gram_run": 1,
+  "distinct_ratio": 0.523
+ }
+]

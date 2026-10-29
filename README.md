@@ -13,7 +13,10 @@ Bench harnesses for the May 2026 local-AI matrix work. The contents of this dire
 
 The results are written up on Augmented Mind's local-AI research pages:
 [augmentedmind.io/research/local-ai](https://augmentedmind.io/research/local-ai/). The first is
-[Local LLM speed on a Mac: Apple Silicon vs Intel, tokens per second (May 2026)](https://augmentedmind.io/research/local-ai/local-llm-speed-mac-may-2026/).
+[Local LLM speed on a Mac: Apple Silicon vs Intel, tokens per second (May 2026)](https://augmentedmind.io/research/local-ai/local-llm-speed-mac-may-2026/). The October 2026 follow-ups,
+[Local LLM speed on a Mac, October 2026](https://augmentedmind.io/research/local-ai/local-llm-speed-mac-october-2026/) and
+[Generating images, video and voice on a Mac against the best AI APIs](https://augmentedmind.io/research/local-ai/local-vs-hosted-image-video-voice-october-2026/),
+have every number, script and output in [`october-2026/`](october-2026/).
 
 ## Single-entry chain (recommended)
 

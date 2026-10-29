@@ -1,0 +1,24 @@
+[
+ {
+  "model": "nemotron-3.5-bolt:74b-a9b",
+  "target": 64000,
+  "num_ctx": 70000,
+  "prompt_tokens": 64811,
+  "answer_tokens": 600,
+  "answer_chars": 1839,
+  "thinking_chars": 0,
+  "longest_4gram_run": 1,
+  "distinct_ratio": 0.445
+ },
+ {
+  "model": "nemotron-3.5-bolt:74b-a9b",
+  "target": 200000,
+  "num_ctx": 215000,
+  "prompt_tokens": 200974,
+  "answer_tokens": 600,
+  "answer_chars": 2092,
+  "thinking_chars": 0,
+  "longest_4gram_run": 1,
+  "distinct_ratio": 0.661
+ }
+]
