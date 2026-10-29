@@ -1,0 +1,24 @@
+[
+ {
+  "model": "qwen3.8:27b-q4_K_M",
+  "target": 64000,
+  "num_ctx": 70000,
+  "prompt_tokens": 63203,
+  "answer_tokens": 600,
+  "answer_chars": 2383,
+  "thinking_chars": 0,
+  "longest_4gram_run": 1,
+  "distinct_ratio": 0.605
+ },
+ {
+  "model": "qwen3.8:27b-q4_K_M",
+  "target": 200000,
+  "num_ctx": 215000,
+  "prompt_tokens": 196634,
+  "answer_tokens": 600,
+  "answer_chars": 2336,
+  "thinking_chars": 0,
+  "longest_4gram_run": 1,
+  "distinct_ratio": 0.565
+ }
+]

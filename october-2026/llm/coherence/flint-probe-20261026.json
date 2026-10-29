@@ -1,0 +1,34 @@
+[
+ {
+  "prompt": "short",
+  "think": "off",
+  "tokens": 361,
+  "answer_chars": 239,
+  "thinking_chars": 0,
+  "done_reason": "stop"
+ },
+ {
+  "prompt": "short",
+  "think": "default",
+  "tokens": 208,
+  "answer_chars": 299,
+  "thinking_chars": 743,
+  "done_reason": "stop"
+ },
+ {
+  "prompt": "64K",
+  "think": "off",
+  "tokens": 600,
+  "answer_chars": 0,
+  "thinking_chars": 0,
+  "done_reason": "length"
+ },
+ {
+  "prompt": "64K",
+  "think": "default",
+  "tokens": 600,
+  "answer_chars": 0,
+  "thinking_chars": 2909,
+  "done_reason": "length"
+ }
+]
